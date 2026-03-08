@@ -11,6 +11,8 @@ jobs:
   release:
     name: Release
     runs-on: macos-latest
+    # Skip commits from this workflow to avoid infinite loops
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +25,35 @@ jobs:
       - name: Cache cargo registry & build
         uses: Swatinem/rust-cache@v2
 
-      - name: Run release-plz
+      - name: Install release-plz
+        run: |
+          curl -sSLf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall -y release-plz
+
+      - name: Bump version and update changelog
+        run: release-plz update
+
+      - name: Check for releasable changes
+        id: check
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit version bump
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          git commit -m "chore(release): bump to v${VERSION} and update changelog"
+          git push
+
+      - name: Publish and create GitHub Release
+        if: steps.check.outputs.changed == 'true'
         uses: release-plz/action@v0.5
         with:
           command: release
