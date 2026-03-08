@@ -28,7 +28,7 @@ fn test_waveform_update_stores_samples() {
 
 #[test]
 fn test_waveform_render_empty_no_panic() {
-    let viz = Waveform::new();
+    let mut viz = Waveform::new();
     let area = Rect::new(0, 0, 40, 10);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
@@ -36,7 +36,7 @@ fn test_waveform_render_empty_no_panic() {
 
 #[test]
 fn test_waveform_render_zero_area_no_panic() {
-    let viz = Waveform::new();
+    let mut viz = Waveform::new();
     let area = Rect::new(0, 0, 0, 0);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);

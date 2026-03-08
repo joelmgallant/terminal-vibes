@@ -12,7 +12,7 @@ fn test_aurora_name() {
 
 #[test]
 fn test_aurora_render_empty_no_panic() {
-    let viz = Aurora::new();
+    let mut viz = Aurora::new();
     let area = Rect::new(0, 0, 80, 24);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
@@ -20,7 +20,7 @@ fn test_aurora_render_empty_no_panic() {
 
 #[test]
 fn test_aurora_render_zero_area_no_panic() {
-    let viz = Aurora::new();
+    let mut viz = Aurora::new();
     let area = Rect::new(0, 0, 0, 0);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);

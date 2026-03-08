@@ -2,6 +2,22 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
+/// Quantize an RGB color to reduce unique terminal escape sequences.
+///
+/// Reduces the galaxy of possible 24-bit colors to a smaller set so that
+/// ratatui's frame diff sees more unchanged cells, dramatically cutting
+/// escape sequence volume in terminal multiplexers like tmux.
+#[inline]
+pub fn quantize_color(color: Color) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => {
+            const STEP: u8 = 4;
+            Color::Rgb((r / STEP) * STEP, (g / STEP) * STEP, (b / STEP) * STEP)
+        }
+        other => other,
+    }
+}
+
 /// A 2D pixel canvas that maps to Unicode braille characters (U+2800 block).
 /// Each terminal cell is a 2x4 dot matrix, giving 2x horizontal and 4x vertical
 /// sub-cell resolution.
@@ -34,6 +50,16 @@ impl BrailleCanvas {
         }
     }
 
+    /// Reuse this canvas if dimensions match, otherwise reallocate.
+    /// Avoids per-frame heap allocations when the terminal size is stable.
+    pub fn resize_or_clear(&mut self, cols: u16, rows: u16) {
+        if self.cols != cols || self.rows != rows {
+            *self = Self::new(cols, rows);
+        } else {
+            self.clear();
+        }
+    }
+
     pub fn pixel_width(&self) -> usize {
         self.cols as usize * 2
     }
@@ -56,6 +82,7 @@ impl BrailleCanvas {
 
     /// Render the pixel buffer into a ratatui Buffer using braille characters.
     pub fn render(&self, area: &Rect, buf: &mut Buffer, color: Color) {
+        let color = quantize_color(color);
         let render_cols = self.cols.min(area.width);
         let render_rows = self.rows.min(area.height);
 
@@ -118,6 +145,16 @@ impl HalfBlockCanvas {
         }
     }
 
+    /// Reuse this canvas if dimensions match, otherwise reallocate.
+    /// Avoids per-frame heap allocations when the terminal size is stable.
+    pub fn resize_or_clear(&mut self, cols: u16, rows: u16) {
+        if self.cols != cols || self.rows != rows {
+            *self = Self::new(cols, rows);
+        } else {
+            self.clear();
+        }
+    }
+
     pub fn pixel_width(&self) -> usize {
         self.cols as usize
     }
@@ -147,8 +184,8 @@ impl HalfBlockCanvas {
             for cx in 0..render_cols {
                 let top_idx = (cy as usize * 2) * self.pixel_width() + cx as usize;
                 let bot_idx = (cy as usize * 2 + 1) * self.pixel_width() + cx as usize;
-                let top = self.pixels[top_idx];
-                let bot = self.pixels[bot_idx];
+                let top = self.pixels[top_idx].map(quantize_color);
+                let bot = self.pixels[bot_idx].map(quantize_color);
 
                 let cell = &mut buf[(area.x + cx, area.y + cy)];
                 match (top, bot) {

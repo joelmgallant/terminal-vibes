@@ -1,4 +1,5 @@
 use crate::processing::FrameData;
+use crate::visualizations::render::quantize_color;
 use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -30,7 +31,7 @@ impl Visualization for Waveform {
         self.beat_envelope = frame.beat.envelope;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 || self.samples.is_empty() {
             return;
         }
@@ -38,7 +39,7 @@ impl Visualization for Waveform {
         let mid_y = area.y + area.height / 2;
 
         // Beat envelope drives brightness: dim between beats, vivid on beats
-        let draw_color = if let Color::Rgb(r, g, b) = self.color {
+        let draw_color = quantize_color(if let Color::Rgb(r, g, b) = self.color {
             let brightness = 0.3 + self.beat_envelope * 0.7;
             Color::Rgb(
                 (r as f32 * brightness) as u8,
@@ -47,7 +48,7 @@ impl Visualization for Waveform {
             )
         } else {
             self.color
-        };
+        });
 
         for x in 0..area.width {
             // Map terminal column to sample index

@@ -33,7 +33,7 @@ fn test_spectrogram_accumulates_history() {
 
 #[test]
 fn test_spectrogram_render_empty_no_panic() {
-    let viz = Spectrogram::new(200);
+    let mut viz = Spectrogram::new(200);
     let area = Rect::new(0, 0, 40, 10);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
@@ -41,7 +41,7 @@ fn test_spectrogram_render_empty_no_panic() {
 
 #[test]
 fn test_spectrogram_render_zero_area_no_panic() {
-    let viz = Spectrogram::new(200);
+    let mut viz = Spectrogram::new(200);
     let area = Rect::new(0, 0, 0, 0);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);

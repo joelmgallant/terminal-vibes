@@ -4,6 +4,7 @@ use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use std::collections::VecDeque;
 use std::f32::consts::PI;
 
 /// Frequency ratios that produce interesting Lissajous patterns
@@ -28,10 +29,11 @@ pub struct Lissajous {
     peak: f32,
     rms: f32,
     /// Trail: recent curve snapshots for fading effect
-    trail: Vec<Vec<(f32, f32)>>,
+    trail: VecDeque<Vec<(f32, f32)>>,
     color: Color,
     beat_envelope: f32,
     beat_fired: bool,
+    canvas: BrailleCanvas,
 }
 
 impl Lissajous {
@@ -45,10 +47,11 @@ impl Lissajous {
             phase_y: 0.0,
             peak: 0.0,
             rms: 0.0,
-            trail: Vec::new(),
+            trail: VecDeque::new(),
             color: Color::Rgb(0, 255, 200),
             beat_envelope: 0.0,
             beat_fired: false,
+            canvas: BrailleCanvas::new(0, 0),
         }
     }
 
@@ -110,22 +113,22 @@ impl Visualization for Lissajous {
 
         // Push to trail, keep last N frames
         let max_trail = 5 + (self.rms * 15.0) as usize; // 5-20 frames based on energy
-        self.trail.push(curve);
+        self.trail.push_back(curve);
         while self.trail.len() > max_trail {
-            self.trail.remove(0);
+            self.trail.pop_front();
         }
 
         self.time += 0.02 + self.rms * 0.03;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let mut canvas = BrailleCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width() as f32;
-        let ph = canvas.pixel_height() as f32;
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width() as f32;
+        let ph = self.canvas.pixel_height() as f32;
         let cx = pw / 2.0;
         let cy = ph / 2.0;
         let scale = cx.min(cy) * 0.9;
@@ -135,7 +138,7 @@ impl Visualization for Lissajous {
             for &(x, y) in curve {
                 let px = (cx + x * scale) as usize;
                 let py = (cy + y * scale) as usize;
-                canvas.set(px, py);
+                self.canvas.set(px, py);
             }
         }
 
@@ -150,7 +153,7 @@ impl Visualization for Lissajous {
         } else {
             self.color
         };
-        canvas.render(&area, buf, draw_color);
+        self.canvas.render(&area, buf, draw_color);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

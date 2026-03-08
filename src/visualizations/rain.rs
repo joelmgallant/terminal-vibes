@@ -1,4 +1,5 @@
 use crate::processing::FrameData;
+use crate::visualizations::render::quantize_color;
 use crate::visualizations::spectrum::ColorPalette;
 use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
@@ -134,7 +135,7 @@ impl Visualization for Rain {
         }
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
@@ -170,7 +171,7 @@ impl Visualization for Rain {
 
                     // Beat envelope brightens all drops
                     let beat_brightness = 0.4 + self.beat_envelope * 0.6;
-                    let color = if let Color::Rgb(r, g, b) = base_color {
+                    let color = quantize_color(if let Color::Rgb(r, g, b) = base_color {
                         Color::Rgb(
                             (r as f32 * fade * beat_brightness) as u8,
                             (g as f32 * fade * beat_brightness) as u8,
@@ -178,7 +179,7 @@ impl Visualization for Rain {
                         )
                     } else {
                         base_color
-                    };
+                    });
 
                     let ch = if dy == 0 { head_char } else { tail_char };
                     buf[(x, y)].set_char(ch).set_fg(color);

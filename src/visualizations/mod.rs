@@ -24,7 +24,7 @@ pub trait Visualization: Send {
     fn update(&mut self, frame: &FrameData);
 
     /// Render into the given ratatui buffer area.
-    fn render(&self, area: Rect, buf: &mut Buffer);
+    fn render(&mut self, area: Rect, buf: &mut Buffer);
 
     /// Handle a keypress specific to this visualization. Returns true if handled.
     fn on_key(&mut self, _key: KeyEvent) -> bool {

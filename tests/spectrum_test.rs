@@ -29,7 +29,7 @@ fn test_spectrum_bars_update_stores_spectrum() {
 
 #[test]
 fn test_spectrum_bars_render_empty_no_panic() {
-    let viz = SpectrumBars::new();
+    let mut viz = SpectrumBars::new();
     let area = Rect::new(0, 0, 40, 10);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);

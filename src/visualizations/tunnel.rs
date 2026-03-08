@@ -49,6 +49,7 @@ pub struct Tunnel {
     spawn_timer: f32,
     beat_envelope: f32,
     beat_fired: bool,
+    canvas: HalfBlockCanvas,
 }
 
 impl Tunnel {
@@ -64,6 +65,7 @@ impl Tunnel {
             spawn_timer: 0.0,
             beat_envelope: 0.0,
             beat_fired: false,
+            canvas: HalfBlockCanvas::new(0, 0),
         }
     }
 
@@ -137,14 +139,14 @@ impl Visualization for Tunnel {
         self.time += 0.016;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let mut canvas = HalfBlockCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width() as f32;
-        let ph = canvas.pixel_height() as f32;
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width() as f32;
+        let ph = self.canvas.pixel_height() as f32;
         let cx = pw / 2.0;
         let cy = ph / 2.0;
         let max_radius = cx.min(cy);
@@ -154,7 +156,8 @@ impl Visualization for Tunnel {
             let r = ring.radius * max_radius;
             // Brightness fades with distance — envelope makes everything glow
             let envelope_boost = 0.5 + self.beat_envelope * 0.5;
-            let brightness = ((1.0 - ring.radius) * envelope_boost + self.beat_envelope * 0.3).clamp(0.0, 1.0);
+            let brightness =
+                ((1.0 - ring.radius) * envelope_boost + self.beat_envelope * 0.3).clamp(0.0, 1.0);
             let color = self.palette.color(ring.color_t);
 
             // Dim the color based on distance
@@ -181,12 +184,12 @@ impl Visualization for Tunnel {
                     let t = s as f32 / steps as f32;
                     let px = (x0 + (x1 - x0) * t) as usize;
                     let py = (y0 + (y1 - y0) * t) as usize;
-                    canvas.set(px, py, color);
+                    self.canvas.set(px, py, color);
                 }
             }
         }
 
-        canvas.render(&area, buf);
+        self.canvas.render(&area, buf);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

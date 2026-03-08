@@ -13,6 +13,7 @@ pub struct RadialSpectrum {
     mirror: bool,
     palette: ColorPalette,
     beat_envelope: f32,
+    canvas: HalfBlockCanvas,
 }
 
 impl RadialSpectrum {
@@ -24,6 +25,7 @@ impl RadialSpectrum {
             mirror: false,
             palette: ColorPalette::Neon,
             beat_envelope: 0.0,
+            canvas: HalfBlockCanvas::new(0, 0),
         }
     }
 }
@@ -41,14 +43,14 @@ impl Visualization for RadialSpectrum {
         self.rotation += 0.005 + self.rms * 0.02 + self.beat_envelope * 0.05;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 || self.spectrum.is_empty() {
             return;
         }
 
-        let mut canvas = HalfBlockCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width() as f32;
-        let ph = canvas.pixel_height() as f32;
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width() as f32;
+        let ph = self.canvas.pixel_height() as f32;
         let cx = pw / 2.0;
         let cy = ph / 2.0;
         let max_len = cx.min(cy) * 0.85;
@@ -79,18 +81,18 @@ impl Visualization for RadialSpectrum {
                 let r = s as f32;
                 let px = (cx + angle.cos() * r) as usize;
                 let py = (cy + angle.sin() * r) as usize;
-                canvas.set(px, py, color);
+                self.canvas.set(px, py, color);
 
                 if self.mirror {
                     // Draw inward mirror
                     let px_in = (cx - angle.cos() * r) as usize;
                     let py_in = (cy - angle.sin() * r) as usize;
-                    canvas.set(px_in, py_in, color);
+                    self.canvas.set(px_in, py_in, color);
                 }
             }
         }
 
-        canvas.render(&area, buf);
+        self.canvas.render(&area, buf);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

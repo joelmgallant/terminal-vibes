@@ -16,6 +16,7 @@ pub struct Plasma {
     rms: f32,
     hue_offset: f32,
     beat_envelope: f32,
+    canvas: HalfBlockCanvas,
 }
 
 impl Plasma {
@@ -29,6 +30,7 @@ impl Plasma {
             rms: 0.0,
             hue_offset: 0.0,
             beat_envelope: 0.0,
+            canvas: HalfBlockCanvas::new(0, 0),
         }
     }
 }
@@ -70,14 +72,14 @@ impl Visualization for Plasma {
         self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.06;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let mut canvas = HalfBlockCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width();
-        let ph = canvas.pixel_height();
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width();
+        let ph = self.canvas.pixel_height();
 
         for py in 0..ph {
             let y = py as f32 / ph as f32;
@@ -95,11 +97,11 @@ impl Visualization for Plasma {
                 let t = (v + 1.0) / 2.0; // normalize to 0.0..1.0
 
                 let color = plasma_color(t, self.hue_offset);
-                canvas.set(px, py, color);
+                self.canvas.set(px, py, color);
             }
         }
 
-        canvas.render(&area, buf);
+        self.canvas.render(&area, buf);
     }
 }
 

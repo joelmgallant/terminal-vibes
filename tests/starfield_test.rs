@@ -12,7 +12,7 @@ fn test_starfield_name() {
 
 #[test]
 fn test_starfield_render_empty_no_panic() {
-    let viz = Starfield::new();
+    let mut viz = Starfield::new();
     let area = Rect::new(0, 0, 80, 24);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
@@ -20,7 +20,7 @@ fn test_starfield_render_empty_no_panic() {
 
 #[test]
 fn test_starfield_render_zero_area_no_panic() {
-    let viz = Starfield::new();
+    let mut viz = Starfield::new();
     let area = Rect::new(0, 0, 0, 0);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);

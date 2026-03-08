@@ -1,4 +1,5 @@
 use crate::processing::FrameData;
+use crate::visualizations::render::quantize_color;
 use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -38,36 +39,27 @@ impl Visualization for Spectrogram {
         }
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 || self.history.is_empty() {
             return;
         }
 
         let cols = area.width as usize;
         let rows = area.height as usize;
+        let total = self.history.len();
+        let visible_count = cols.min(total);
+        let skip = total - visible_count;
 
-        // Show the most recent `cols` frames (time flows left to right)
-        let visible_entries: Vec<(&Vec<f32>, bool)> = self
+        let x_offset = cols.saturating_sub(visible_count);
+
+        // Iterate directly over the tail of history — zero intermediate allocations
+        for (col_idx, (spectrum, &is_beat)) in self
             .history
             .iter()
             .zip(self.beat_markers.iter())
-            .rev()
-            .take(cols)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .map(|(spec, &beat)| (spec, beat))
-            .collect();
-        let visible_history: Vec<&Vec<f32>> = visible_entries.iter().map(|(s, _)| *s).collect();
-        let visible_beats: Vec<bool> = visible_entries.iter().map(|(_, b)| *b).collect();
-
-        let x_offset = if visible_history.len() < cols {
-            cols - visible_history.len()
-        } else {
-            0
-        };
-
-        for (col_idx, spectrum) in visible_history.iter().enumerate() {
+            .skip(skip)
+            .enumerate()
+        {
             let x = area.x + (x_offset + col_idx) as u16;
             if x >= area.x + area.width {
                 continue;
@@ -85,13 +77,12 @@ impl Visualization for Spectrogram {
 
                 let y = area.y + row as u16;
                 // Beat frames get a strong brightness boost — visible column markers
-                let is_beat = visible_beats.get(col_idx).copied().unwrap_or(false);
                 let display_intensity = if is_beat {
                     (intensity + 0.5).clamp(0.0, 1.0)
                 } else {
                     intensity
                 };
-                let color = magma_colormap(display_intensity);
+                let color = quantize_color(magma_colormap(display_intensity));
 
                 buf[(x, y)]
                     .set_char(intensity_char(display_intensity))

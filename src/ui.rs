@@ -82,12 +82,16 @@ impl App {
             // Scale beat data by beat intensity
             let bi = self.beat_intensity;
             display_frame.beat.envelope = (display_frame.beat.envelope * bi).clamp(0.0, 1.0);
-            display_frame.beat.bass_envelope = (display_frame.beat.bass_envelope * bi).clamp(0.0, 1.0);
-            display_frame.beat.mid_envelope = (display_frame.beat.mid_envelope * bi).clamp(0.0, 1.0);
-            display_frame.beat.treble_envelope = (display_frame.beat.treble_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.bass_envelope =
+                (display_frame.beat.bass_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.mid_envelope =
+                (display_frame.beat.mid_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.treble_envelope =
+                (display_frame.beat.treble_envelope * bi).clamp(0.0, 1.0);
             display_frame.beat.bass_energy = (display_frame.beat.bass_energy * bi).clamp(0.0, 1.0);
             display_frame.beat.mid_energy = (display_frame.beat.mid_energy * bi).clamp(0.0, 1.0);
-            display_frame.beat.treble_energy = (display_frame.beat.treble_energy * bi).clamp(0.0, 1.0);
+            display_frame.beat.treble_energy =
+                (display_frame.beat.treble_energy * bi).clamp(0.0, 1.0);
 
             self.registry.update_current(&display_frame);
 

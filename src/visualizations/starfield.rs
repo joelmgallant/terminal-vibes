@@ -44,6 +44,7 @@ pub struct Starfield {
     color: Color,
     beat_envelope: f32,
     beat_fired: bool,
+    canvas: BrailleCanvas,
 }
 
 impl Starfield {
@@ -63,6 +64,7 @@ impl Starfield {
             color: Color::White,
             beat_envelope: 0.0,
             beat_fired: false,
+            canvas: BrailleCanvas::new(0, 0),
         }
     }
 }
@@ -102,14 +104,14 @@ impl Visualization for Starfield {
         }
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let mut canvas = BrailleCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width() as f32;
-        let ph = canvas.pixel_height() as f32;
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width() as f32;
+        let ph = self.canvas.pixel_height() as f32;
         let cx = pw / 2.0;
         let cy = ph / 2.0;
 
@@ -121,16 +123,16 @@ impl Visualization for Starfield {
             let px = screen_x as usize;
             let py = screen_y as usize;
 
-            if px < canvas.pixel_width() && py < canvas.pixel_height() {
-                canvas.set(px, py);
+            if px < self.canvas.pixel_width() && py < self.canvas.pixel_height() {
+                self.canvas.set(px, py);
 
                 // Closer particles get bigger (plot adjacent dots)
                 if particle.z < 0.4 {
-                    if px + 1 < canvas.pixel_width() {
-                        canvas.set(px + 1, py);
+                    if px + 1 < self.canvas.pixel_width() {
+                        self.canvas.set(px + 1, py);
                     }
-                    if py + 1 < canvas.pixel_height() {
-                        canvas.set(px, py + 1);
+                    if py + 1 < self.canvas.pixel_height() {
+                        self.canvas.set(px, py + 1);
                     }
                 }
             }
@@ -139,7 +141,7 @@ impl Visualization for Starfield {
         // Brightness pulses with beat — dim drift, bright burst
         let brightness = (80.0 + self.rms * 50.0 + self.beat_envelope * 125.0) as u8;
         let color = Color::Rgb(brightness, brightness, brightness);
-        canvas.render(&area, buf, color);
+        self.canvas.render(&area, buf, color);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

@@ -1,4 +1,5 @@
 use crate::processing::FrameData;
+use crate::visualizations::render::quantize_color;
 use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -135,7 +136,7 @@ impl Visualization for SpectrumBars {
         }
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 || self.spectrum.is_empty() {
             return;
         }
@@ -174,7 +175,7 @@ impl Visualization for SpectrumBars {
             };
             let base_color = self.palette.color(color_t);
             // Bars stay bright, beat adds a white-hot glow on top
-            let color = if let Color::Rgb(r, g, b) = base_color {
+            let color = quantize_color(if let Color::Rgb(r, g, b) = base_color {
                 let boost = self.beat_envelope * 0.4;
                 Color::Rgb(
                     (r as f32 + (255.0 - r as f32) * boost) as u8,
@@ -183,7 +184,7 @@ impl Visualization for SpectrumBars {
                 )
             } else {
                 base_color
-            };
+            });
 
             if self.chunky {
                 let full_cells = (value * area.height as f32).round() as u16;

@@ -69,8 +69,8 @@ impl VisualizationRegistry {
         }
     }
 
-    pub fn render_current(&self, area: Rect, buf: &mut Buffer) {
-        if let Some(viz) = self.current() {
+    pub fn render_current(&mut self, area: Rect, buf: &mut Buffer) {
+        if let Some(viz) = self.current_mut() {
             viz.render(area, buf);
         }
     }

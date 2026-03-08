@@ -32,7 +32,7 @@ impl Visualization for MockViz {
     fn update(&mut self, _frame: &FrameData) {
         self.updated = true;
     }
-    fn render(&self, _area: Rect, _buf: &mut Buffer) {}
+    fn render(&mut self, _area: Rect, _buf: &mut Buffer) {}
 }
 
 #[test]

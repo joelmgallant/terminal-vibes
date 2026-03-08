@@ -27,6 +27,8 @@ pub struct Aurora {
     band_energies: Vec<f32>,
     num_layers: usize,
     beat_envelope: f32,
+    canvas: HalfBlockCanvas,
+    column_colors: Vec<(f32, f32, f32)>,
 }
 
 impl Aurora {
@@ -39,6 +41,8 @@ impl Aurora {
             band_energies: Vec::new(),
             num_layers: 3,
             beat_envelope: 0.0,
+            canvas: HalfBlockCanvas::new(0, 0),
+            column_colors: Vec::new(),
         }
     }
 
@@ -93,21 +97,22 @@ impl Visualization for Aurora {
         self.time += 0.02 + self.rms * 0.04;
     }
 
-    fn render(&self, area: Rect, buf: &mut Buffer) {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
 
-        let mut canvas = HalfBlockCanvas::new(area.width, area.height);
-        let pw = canvas.pixel_width();
-        let ph = canvas.pixel_height();
+        self.canvas.resize_or_clear(area.width, area.height);
+        let pw = self.canvas.pixel_width();
+        let ph = self.canvas.pixel_height();
 
         // For each column, compute each curtain's contribution
         for px in 0..pw {
             let x = px as f32 / pw as f32;
 
-            // Accumulate color per pixel row (additive blending)
-            let mut column_colors: Vec<(f32, f32, f32)> = vec![(0.0, 0.0, 0.0); ph];
+            // Reuse column color buffer instead of allocating per column
+            self.column_colors.resize(ph, (0.0, 0.0, 0.0));
+            self.column_colors.fill((0.0, 0.0, 0.0));
 
             for (i, curtain) in self.curtains.iter().enumerate() {
                 let energy = self.band_energies.get(i).copied().unwrap_or(0.3);
@@ -130,24 +135,24 @@ impl Visualization for Aurora {
                         let falloff = falloff * falloff; // quadratic
                         let intensity = falloff * brightness;
 
-                        column_colors[py].0 += curtain.color.0 as f32 * intensity;
-                        column_colors[py].1 += curtain.color.1 as f32 * intensity;
-                        column_colors[py].2 += curtain.color.2 as f32 * intensity;
+                        self.column_colors[py].0 += curtain.color.0 as f32 * intensity;
+                        self.column_colors[py].1 += curtain.color.1 as f32 * intensity;
+                        self.column_colors[py].2 += curtain.color.2 as f32 * intensity;
                     }
                 }
             }
 
             // Write blended colors to canvas
-            for (py, &(r, g, b)) in column_colors.iter().enumerate() {
+            for (py, &(r, g, b)) in self.column_colors.iter().enumerate() {
                 if r > 1.0 || g > 1.0 || b > 1.0 {
                     let color =
                         Color::Rgb((r as u8).min(255), (g as u8).min(255), (b as u8).min(255));
-                    canvas.set(px, py, color);
+                    self.canvas.set(px, py, color);
                 }
             }
         }
 
-        canvas.render(&area, buf);
+        self.canvas.render(&area, buf);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
