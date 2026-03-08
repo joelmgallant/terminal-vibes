@@ -72,51 +72,83 @@ impl Default for BeatDetectionConfig {
 }
 
 struct BandDetector {
-    energy_history: Vec<f32>,
-    history_pos: usize,
-    history_len: usize,
+    previous_bins: Vec<f32>,
+    flux_history: Vec<f32>,
+    flux_pos: usize,
+    flux_len: usize,
     cooldown_remaining: usize,
     envelope: f32,
 }
 
 impl BandDetector {
-    fn new(history_frames: usize) -> Self {
+    fn new(flux_history_frames: usize) -> Self {
         Self {
-            energy_history: vec![0.0; history_frames],
-            history_pos: 0,
-            history_len: 0,
+            previous_bins: Vec::new(),
+            flux_history: vec![0.0; flux_history_frames],
+            flux_pos: 0,
+            flux_len: 0,
             cooldown_remaining: 0,
             envelope: 0.0,
         }
     }
 
-    fn compute_energy(bands: &[f32]) -> f32 {
-        if bands.is_empty() {
+    fn compute_energy(bins: &[f32]) -> f32 {
+        if bins.is_empty() {
             return 0.0;
         }
-        let sum: f32 = bands.iter().map(|&v| v * v).sum();
-        sum / bands.len() as f32
+        let sum: f32 = bins.iter().map(|&v| v * v).sum();
+        sum / bins.len() as f32
     }
 
-    fn analyze(&mut self, energy: f32, config: &BeatDetectionConfig) -> (bool, f32) {
-        let capacity = self.energy_history.len();
-        self.energy_history[self.history_pos] = energy;
-        self.history_pos = (self.history_pos + 1) % capacity;
-        if self.history_len < capacity {
-            self.history_len += 1;
+    fn compute_flux(current: &[f32], previous: &[f32]) -> f32 {
+        if previous.is_empty() {
+            return 0.0;
+        }
+        current
+            .iter()
+            .zip(previous.iter())
+            .map(|(&c, &p)| (c - p).max(0.0))
+            .sum()
+    }
+
+    fn median(values: &[f32], len: usize) -> f32 {
+        if len == 0 {
+            return 0.0;
+        }
+        let mut sorted: Vec<f32> = values[..len].to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        if len % 2 == 0 {
+            (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
+        } else {
+            sorted[len / 2]
+        }
+    }
+
+    fn analyze(&mut self, bins: &[f32], config: &BeatDetectionConfig) -> (bool, f32, f32) {
+        let energy = Self::compute_energy(bins);
+        let flux = Self::compute_flux(bins, &self.previous_bins);
+
+        // Store current bins for next frame
+        self.previous_bins.clear();
+        self.previous_bins.extend_from_slice(bins);
+
+        // Update flux history ring buffer
+        let capacity = self.flux_history.len();
+        self.flux_history[self.flux_pos] = flux;
+        self.flux_pos = (self.flux_pos + 1) % capacity;
+        if self.flux_len < capacity {
+            self.flux_len += 1;
         }
 
-        let history = &self.energy_history[..self.history_len];
-        let avg = history.iter().sum::<f32>() / history.len() as f32;
-        let variance =
-            history.iter().map(|&e| (e - avg).powi(2)).sum::<f32>() / history.len() as f32;
+        // Threshold: median of flux history * sensitivity
+        let median_flux = Self::median(&self.flux_history, self.flux_len);
+        let threshold = median_flux * config.flux_sensitivity;
 
-        let threshold = avg * config.sensitivity + variance.sqrt() * config.variance_scale;
-
+        // Beat: flux exceeds threshold AND energy exceeds floor
         let beat = if self.cooldown_remaining > 0 {
             self.cooldown_remaining -= 1;
             false
-        } else if energy > threshold && energy > 1e-6 {
+        } else if flux > threshold && flux > 1e-6 && energy > config.energy_floor {
             self.cooldown_remaining = config.cooldown_frames;
             true
         } else {
@@ -129,7 +161,7 @@ impl BandDetector {
             self.envelope *= config.envelope_decay;
         }
 
-        (beat, self.envelope)
+        (beat, self.envelope, energy)
     }
 }
 
@@ -155,9 +187,9 @@ impl BeatDetector {
         let mid_end = mid_end.clamp(bass_end + 1, num_bands - 1);
 
         Self {
-            bass: BandDetector::new(config.history_frames),
-            mid: BandDetector::new(config.history_frames),
-            treble: BandDetector::new(config.history_frames),
+            bass: BandDetector::new(config.flux_history_frames),
+            mid: BandDetector::new(config.flux_history_frames),
+            treble: BandDetector::new(config.flux_history_frames),
             bass_end,
             mid_end,
             config,
@@ -173,13 +205,12 @@ impl BeatDetector {
         let bass_end = self.bass_end.min(num_bands);
         let mid_end = self.mid_end.min(num_bands);
 
-        let bass_energy = BandDetector::compute_energy(&spectrum[..bass_end]);
-        let mid_energy = BandDetector::compute_energy(&spectrum[bass_end..mid_end]);
-        let treble_energy = BandDetector::compute_energy(&spectrum[mid_end..]);
-
-        let (bass_beat, bass_envelope) = self.bass.analyze(bass_energy, &self.config);
-        let (mid_beat, mid_envelope) = self.mid.analyze(mid_energy, &self.config);
-        let (treble_beat, treble_envelope) = self.treble.analyze(treble_energy, &self.config);
+        let (bass_beat, bass_envelope, bass_energy) =
+            self.bass.analyze(&spectrum[..bass_end], &self.config);
+        let (mid_beat, mid_envelope, mid_energy) =
+            self.mid.analyze(&spectrum[bass_end..mid_end], &self.config);
+        let (treble_beat, treble_envelope, treble_energy) =
+            self.treble.analyze(&spectrum[mid_end..], &self.config);
 
         let beat = bass_beat || mid_beat || treble_beat;
         let envelope = bass_envelope.max(mid_envelope).max(treble_envelope);
@@ -373,6 +404,77 @@ mod tests {
             (beat.envelope - beat.treble_envelope).abs() < 0.01
                 || beat.envelope >= beat.treble_envelope,
             "Overall envelope should be >= treble envelope"
+        );
+    }
+
+    #[test]
+    fn test_steady_periodic_beats_detected_consistently() {
+        let mut detector = BeatDetector::new(128, make_config());
+        let quiet = vec![0.05_f32; 128];
+        let mut kick = vec![0.05_f32; 128];
+        for i in 0..37 {
+            kick[i] = 0.8;
+        }
+
+        // Warm up
+        for _ in 0..60 {
+            detector.analyze(&quiet);
+        }
+
+        // Simulate 4-on-the-floor at ~128 BPM (28 frames per beat at 60Hz)
+        // 8 beats total
+        let mut beats_detected = 0;
+        for _beat_num in 0..8 {
+            // Kick frame
+            let result = detector.analyze(&kick);
+            if result.bass_beat {
+                beats_detected += 1;
+            }
+            // Gap frames (27 quiet frames between kicks)
+            for _ in 0..27 {
+                detector.analyze(&quiet);
+            }
+        }
+
+        assert!(
+            beats_detected >= 6,
+            "Should detect at least 6 of 8 steady beats, got {}",
+            beats_detected
+        );
+    }
+
+    #[test]
+    fn test_energy_gate_prevents_beats_on_near_silence() {
+        let mut detector = BeatDetector::new(128, make_config());
+        // Very quiet signal with tiny variations
+        let silence = vec![0.0001_f32; 128];
+        let mut tiny_blip = vec![0.0001_f32; 128];
+        // A small blip but still essentially silence
+        for i in 0..37 {
+            tiny_blip[i] = 0.005;
+        }
+
+        // Warm up with silence
+        for _ in 0..60 {
+            detector.analyze(&silence);
+        }
+
+        // Send blips — should NOT trigger beats due to energy floor
+        let mut false_beats = 0;
+        for _ in 0..20 {
+            let result = detector.analyze(&tiny_blip);
+            if result.bass_beat {
+                false_beats += 1;
+            }
+            for _ in 0..10 {
+                detector.analyze(&silence);
+            }
+        }
+
+        assert!(
+            false_beats == 0,
+            "Energy gate should prevent beats on near-silence, got {} false beats",
+            false_beats
         );
     }
 }
