@@ -182,10 +182,22 @@ impl App {
                     } else {
                         "     "
                     };
+                    let bpm_display = if display_frame.tempo.confidence >= 0.6 {
+                        format!("{}BPM", display_frame.tempo.bpm.round() as u32)
+                    } else if display_frame.tempo.confidence >= 0.3 {
+                        format!("~{}BPM", display_frame.tempo.bpm.round() as u32)
+                    } else {
+                        String::new()
+                    };
+                    let bpm_section = if bpm_display.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  {}  ", bpm_display)
+                    };
                     let status = format!(
-                        " [{}]  peak: {:.2}  rms: {:.2}  env: {:.2}  {}  sens: {:.1}x  beat: {:.1}x  |  Tab: next  q: quit ",
+                        " [{}]  peak: {:.2}  rms: {:.2}  env: {:.2}  {}{}  sens: {:.1}x  beat: {:.1}x  |  Tab: next  q: quit ",
                         mode_name, display_frame.peak, display_frame.rms,
-                        display_frame.beat.envelope, beat_indicator, self.sensitivity, self.beat_intensity,
+                        display_frame.beat.envelope, beat_indicator, bpm_section, self.sensitivity, self.beat_intensity,
                     );
                     let status_bar = Paragraph::new(status)
                         .style(Style::default().fg(Color::White).bg(Color::DarkGray));
