@@ -10,6 +10,7 @@ use crossterm::{
 use ratatui::prelude::*;
 use ratatui::widgets::Paragraph;
 use std::io::stdout;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -23,12 +24,25 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(registry: VisualizationRegistry, config: Config, running: Arc<AtomicBool>) -> Self {
+    pub fn new(mut registry: VisualizationRegistry, config: Config, running: Arc<AtomicBool>) -> Self {
+        let mut sensitivity = 1.0_f32;
+        // Restore saved state
+        if let Some(state) = Self::load_state() {
+            if let Some(viz_name) = state.get("current_visualization").and_then(|v| v.as_str()) {
+                registry.select_by_name(viz_name);
+            }
+            if let Some(s) = state.get("sensitivity").and_then(|v| v.as_float()) {
+                sensitivity = s as f32;
+            }
+            if let Some(viz_table) = state.get("visualizations").and_then(|v| v.as_table()) {
+                registry.load_all(viz_table);
+            }
+        }
         Self {
             registry,
             config,
             running,
-            sensitivity: 1.0,
+            sensitivity,
         }
     }
 
@@ -101,6 +115,9 @@ impl App {
             }
         }
 
+        // Save state before cleanup
+        self.save_state();
+
         disable_raw_mode()?;
         stdout().execute(LeaveAlternateScreen)?;
         Ok(())
@@ -142,5 +159,44 @@ impl App {
             }
             _ => false,
         }
+    }
+
+    fn state_path() -> PathBuf {
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        config_dir.join("terminal-vibes").join("state.toml")
+    }
+
+    fn save_state(&self) {
+        let mut root = toml::value::Table::new();
+
+        if let Some(name) = self.registry.current_name() {
+            root.insert("current_visualization".to_string(), toml::Value::String(name.to_string()));
+        }
+        root.insert("sensitivity".to_string(), toml::Value::Float(self.sensitivity as f64));
+
+        let viz_states = self.registry.save_all();
+        if !viz_states.is_empty() {
+            root.insert("visualizations".to_string(), toml::Value::Table(viz_states));
+        }
+
+        let state_path = Self::state_path();
+        if let Some(parent) = state_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match toml::to_string_pretty(&toml::Value::Table(root)) {
+            Ok(content) => {
+                if let Err(e) = std::fs::write(&state_path, content) {
+                    log::warn!("Failed to save state: {}", e);
+                }
+            }
+            Err(e) => log::warn!("Failed to serialize state: {}", e),
+        }
+    }
+
+    fn load_state() -> Option<toml::value::Table> {
+        let state_path = Self::state_path();
+        let content = std::fs::read_to_string(&state_path).ok()?;
+        let value: toml::Value = toml::from_str(&content).ok()?;
+        value.as_table().cloned()
     }
 }

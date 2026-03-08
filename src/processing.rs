@@ -12,7 +12,6 @@ pub struct FrameData {
 #[derive(Debug, Clone)]
 pub struct ProcessorConfig {
     pub fft_size: usize,
-    pub sample_rate: f32,
     pub smoothing: f64,
     pub num_bands: usize,
     pub db_floor: f32,
@@ -98,8 +97,11 @@ fn hann_window(size: usize) -> Vec<f32> {
         .collect()
 }
 
-/// Bin linear frequency magnitudes into logarithmically-spaced bands.
-/// Output is normalized to 0.0..1.0 range based on dB floor.
+/// Bin linear FFT magnitudes into perceptually-spaced logarithmic bands.
+///
+/// Uses a true log scale from `f_min` to `f_max` Hz so that bass frequencies
+/// get good resolution on the left and treble compresses naturally on the right.
+/// Output is normalized to 0.0..1.0 based on dB floor.
 fn bin_to_bands(magnitudes: &[f32], num_bands: usize, db_floor: f32) -> Vec<f32> {
     let n = magnitudes.len();
     if n == 0 || num_bands == 0 {
@@ -108,28 +110,31 @@ fn bin_to_bands(magnitudes: &[f32], num_bands: usize, db_floor: f32) -> Vec<f32>
 
     let mut bands = vec![0.0_f32; num_bands];
 
+    // Perceptual frequency range: 30 Hz to ~18 kHz mapped across bands.
+    // We work in bin-index space: bin = freq * fft_size / sample_rate.
+    // Since magnitudes.len() == fft_size/2, bin_max = n corresponds to Nyquist.
+    // f_min_bin and f_max_bin are the bin indices for our desired range.
+    let f_min_bin = 1.0_f64; // ~20-40 Hz depending on sample rate
+    let f_max_bin = n as f64; // Nyquist
+
     for band in 0..num_bands {
-        // Logarithmic bin edges
-        let low = ((band as f64 / num_bands as f64).exp2() - 1.0)
-            / (2.0_f64.powi(1) - 1.0)
-            * n as f64;
-        let high = (((band + 1) as f64 / num_bands as f64).exp2() - 1.0)
-            / (2.0_f64.powi(1) - 1.0)
-            * n as f64;
+        // Log-spaced bin edges: f_min * (f_max/f_min)^(t)
+        let t0 = band as f64 / num_bands as f64;
+        let t1 = (band + 1) as f64 / num_bands as f64;
+        let low = f_min_bin * (f_max_bin / f_min_bin).powf(t0);
+        let high = f_min_bin * (f_max_bin / f_min_bin).powf(t1);
 
-        let lo = (low as usize).max(0).min(n - 1);
-        let hi = (high as usize).max(lo + 1).min(n);
+        let lo = (low as usize).clamp(0, n - 1);
+        let hi = (high as usize).clamp(lo + 1, n);
 
-        // Average magnitude in this band
-        let avg = if hi > lo {
-            magnitudes[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
-        } else {
-            magnitudes[lo]
-        };
+        // Peak magnitude in this band (peak reads better than average for viz)
+        let peak = magnitudes[lo..hi]
+            .iter()
+            .fold(0.0_f32, |acc, &m| acc.max(m));
 
         // Convert to dB then normalize to 0.0..1.0
-        let db = if avg > 0.0 {
-            20.0 * avg.log10()
+        let db = if peak > 0.0 {
+            20.0 * peak.log10()
         } else {
             db_floor
         };

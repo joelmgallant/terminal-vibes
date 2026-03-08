@@ -21,10 +21,12 @@ impl VisualizationRegistry {
         self.plugins.push(viz);
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.plugins.len()
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.plugins.is_empty()
     }
@@ -78,6 +80,39 @@ impl VisualizationRegistry {
             viz.on_key(key)
         } else {
             false
+        }
+    }
+
+    pub fn current_name(&self) -> Option<&str> {
+        self.current().map(|v| v.name())
+    }
+
+    pub fn select_by_name(&mut self, name: &str) {
+        if let Some(idx) = self.plugins.iter().position(|v| v.name() == name) {
+            self.current_index = idx;
+        }
+    }
+
+    /// Save all visualization states as a TOML table keyed by name.
+    pub fn save_all(&self) -> toml::value::Table {
+        let mut table = toml::value::Table::new();
+        for viz in &self.plugins {
+            let config = viz.save_config();
+            if let toml::Value::Table(t) = config {
+                if !t.is_empty() {
+                    table.insert(viz.name().to_string(), toml::Value::Table(t));
+                }
+            }
+        }
+        table
+    }
+
+    /// Load saved state into all visualizations.
+    pub fn load_all(&mut self, table: &toml::value::Table) {
+        for viz in &mut self.plugins {
+            if let Some(config) = table.get(viz.name()) {
+                viz.apply_config(config);
+            }
         }
     }
 }

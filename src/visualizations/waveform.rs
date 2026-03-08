@@ -73,6 +73,14 @@ impl Visualization for Waveform {
             }
         }
     }
+
+    fn save_config(&self) -> toml::Value {
+        let mut table = toml::value::Table::new();
+        if let Color::Rgb(r, g, b) = self.color {
+            table.insert("color".to_string(), toml::Value::String(format!("#{:02x}{:02x}{:02x}", r, g, b)));
+        }
+        toml::Value::Table(table)
+    }
 }
 
 fn parse_hex_color(s: &str) -> Option<Color> {

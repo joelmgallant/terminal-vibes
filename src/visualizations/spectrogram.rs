@@ -87,6 +87,12 @@ impl Visualization for Spectrogram {
             self.max_history = len as usize;
         }
     }
+
+    fn save_config(&self) -> toml::Value {
+        let mut table = toml::value::Table::new();
+        table.insert("history_length".to_string(), toml::Value::Integer(self.max_history as i64));
+        toml::Value::Table(table)
+    }
 }
 
 /// Map intensity (0.0..1.0) to a block character of varying density.

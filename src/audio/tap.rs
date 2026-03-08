@@ -249,7 +249,6 @@ pub struct AudioTap {
     dispatch_queue: *mut c_void,
     _block: Box<IOBlock>,
     _callback_context: *mut CallbackContext,
-    config: AudioConfig,
 }
 
 unsafe impl Send for AudioTap {}
@@ -361,7 +360,6 @@ impl AudioTap {
             dispatch_queue,
             _block: io_block,
             _callback_context: ctx_ptr,
-            config,
         })
     }
 
@@ -417,13 +415,6 @@ impl AudioTap {
         Ok(aggregate_device_id)
     }
 
-    pub fn config(&self) -> &AudioConfig {
-        &self.config
-    }
-
-    pub fn aggregate_device_id(&self) -> ffi::AudioDeviceID {
-        self.aggregate_device_id
-    }
 }
 
 impl Drop for AudioTap {

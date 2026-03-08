@@ -58,7 +58,6 @@ fn main() -> Result<()> {
     // Set up audio tap
     let audio_config = AudioConfig {
         sample_rate: 44100.0,
-        buffer_size: config.audio.buffer_size,
         channels: 2,
     };
     let _audio_tap = AudioTap::new(producer, audio_config.clone())
@@ -85,9 +84,8 @@ fn main() -> Result<()> {
     let processor_handle = thread::spawn(move || {
         let mut processor = Processor::new(ProcessorConfig {
             fft_size,
-            sample_rate: audio_config.sample_rate,
             smoothing,
-            num_bands: 64,
+            num_bands: 128,
             db_floor: -60.0,
         });
 

@@ -30,4 +30,9 @@ pub trait Visualization: Send {
 
     /// Apply config values.
     fn apply_config(&mut self, _config: &toml::Value) {}
+
+    /// Return current runtime state for persistence.
+    fn save_config(&self) -> toml::Value {
+        self.default_config()
+    }
 }
