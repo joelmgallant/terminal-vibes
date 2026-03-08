@@ -4,6 +4,8 @@ A real-time terminal music visualizer for macOS. Captures system audio and rende
 
 Built with Rust, Core Audio, and [ratatui](https://github.com/ratatui/ratatui).
 
+<video src="terminal-vibes.mp4" autoplay loop muted playsinline></video>
+
 ## Requirements
 
 - **macOS 15+** (Sequoia) — uses the `AudioProcessTap` API for system audio capture
