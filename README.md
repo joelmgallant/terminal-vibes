@@ -44,12 +44,16 @@ https://github.com/user-attachments/assets/f05ef7fd-fa78-4616-abf4-30affbe15c41
 ## Install
 
 ```bash
+cargo install terminal-vibes
+```
+
+Or build from source:
+
+```bash
 git clone https://github.com/joelmgallant/terminal-vibes.git
 cd terminal-vibes
 cargo build --release
 ```
-
-The binary will be at `target/release/terminal-vibes`.
 
 ## Usage
 
