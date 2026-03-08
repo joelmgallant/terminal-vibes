@@ -817,4 +817,112 @@ mod tests {
         // Should have accumulated 50 values
         assert_eq!(estimator.onset_len(), 50);
     }
+
+    #[test]
+    fn test_tempo_phase_resets_on_beat() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Establish tempo first
+        for frame in 0..480 {
+            let is_beat = frame % 30 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        // Now fire a beat and check phase resets
+        estimator.update(1.0, true, &config);
+        let tempo = estimator.tempo_data();
+        assert!(
+            tempo.phase < 0.1,
+            "Phase should reset near 0.0 on beat, got {}",
+            tempo.phase
+        );
+    }
+
+    #[test]
+    fn test_tempo_phase_accumulates() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Establish 120 BPM
+        for frame in 0..480 {
+            let is_beat = frame % 30 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        // Reset phase with a beat
+        estimator.update(1.0, true, &config);
+        // Advance 15 frames (half a beat at 120 BPM / 60 FPS)
+        for _ in 0..15 {
+            estimator.update(0.0, false, &config);
+        }
+        let tempo = estimator.tempo_data();
+        // At 120 BPM, 60 FPS: phase += (120/60)/60 = 1/30 per frame
+        // After 15 frames: phase ~ 0.5
+        assert!(
+            (tempo.phase - 0.5).abs() < 0.15,
+            "Phase should be ~0.5 after half a beat period, got {}",
+            tempo.phase
+        );
+    }
+
+    #[test]
+    fn test_tempo_no_prediction_when_confidence_low() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Don't establish tempo — just feed zeros
+        for _ in 0..300 {
+            estimator.update(0.0, false, &config);
+        }
+        let tempo = estimator.tempo_data();
+        assert!(
+            !tempo.predicted_beat,
+            "Should not predict beats with low confidence"
+        );
+    }
+
+    #[test]
+    fn test_tempo_prediction_fires_on_phase_wrap() {
+        let mut config = make_config();
+        config.prediction_strength = 0.5;
+        let mut estimator = TempoEstimator::new(&config);
+        // Establish 120 BPM
+        for frame in 0..480 {
+            let is_beat = frame % 30 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        // Fire a beat to reset phase
+        estimator.update(1.0, true, &config);
+        // Advance close to the next beat (29 frames of 30)
+        let mut predicted = false;
+        for _ in 0..35 {
+            estimator.update(0.0, false, &config);
+            if estimator.tempo_data().predicted_beat {
+                predicted = true;
+            }
+        }
+        assert!(predicted, "Predicted beat should fire near phase wrap");
+    }
+
+    #[test]
+    fn test_tempo_hysteresis_holds_through_gap() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Establish 120 BPM
+        for frame in 0..480 {
+            let is_beat = frame % 30 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        let bpm_before = estimator.tempo_data().bpm;
+        // 30 frames of silence (~500ms gap)
+        for _ in 0..30 {
+            estimator.update(0.0, false, &config);
+        }
+        let tempo = estimator.tempo_data();
+        assert!(
+            (tempo.bpm - bpm_before).abs() < 1.0,
+            "BPM should hold through brief gap, was {} now {}",
+            bpm_before, tempo.bpm
+        );
+        assert!(
+            tempo.confidence > 0.0,
+            "Confidence should still be nonzero after gap"
+        );
+    }
 }
