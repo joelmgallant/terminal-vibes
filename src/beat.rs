@@ -213,10 +213,23 @@ struct TempoEstimator {
     predicted_beat: bool,
     /// Frame counter for update interval
     frame_count: usize,
+    /// Effective processing FPS — measured empirically or overridden for tests
+    effective_fps: f32,
+    /// Timestamp of the last tempo estimate (for FPS measurement)
+    last_estimate_time: Option<std::time::Instant>,
+    /// Frames processed since last tempo estimate
+    frames_since_estimate: usize,
 }
 
 impl TempoEstimator {
+    /// Create a new estimator that measures its own processing FPS empirically.
     fn new(config: &BeatDetectionConfig) -> Self {
+        Self::with_fps(config, 0.0)
+    }
+
+    /// Create an estimator with an explicit FPS value (for tests where wall-clock
+    /// timing is meaningless because frames are generated in a tight loop).
+    fn with_fps(config: &BeatDetectionConfig, fps_override: f32) -> Self {
         Self {
             onset_buf: vec![0.0; config.tempo_buffer_frames],
             onset_pos: 0,
@@ -226,6 +239,9 @@ impl TempoEstimator {
             phase: 0.0,
             predicted_beat: false,
             frame_count: 0,
+            effective_fps: fps_override,
+            last_estimate_time: None,
+            frames_since_estimate: 0,
         }
     }
 
@@ -244,11 +260,12 @@ impl TempoEstimator {
         }
 
         self.frame_count += 1;
+        self.frames_since_estimate += 1;
 
-        // Phase tracking
-        if self.bpm > 0.0 {
-            // Assume 60 FPS processing rate
-            self.phase += (self.bpm / 60.0) / 60.0;
+        // Phase tracking — uses measured FPS
+        let fps = self.effective_fps;
+        if self.bpm > 0.0 && fps > 0.0 {
+            self.phase += (self.bpm / 60.0) / fps;
         }
 
         // Reset phase on confirmed beat
@@ -323,14 +340,40 @@ impl TempoEstimator {
     }
 
     fn estimate_tempo(&mut self, config: &BeatDetectionConfig) {
+        // Measure effective FPS empirically if not overridden
+        if self.effective_fps <= 0.0 {
+            if let Some(last_time) = self.last_estimate_time {
+                let elapsed = last_time.elapsed().as_secs_f32();
+                if elapsed > 0.05 && self.frames_since_estimate > 0 {
+                    self.effective_fps = self.frames_since_estimate as f32 / elapsed;
+                }
+            }
+            self.last_estimate_time = Some(std::time::Instant::now());
+            self.frames_since_estimate = 0;
+            if self.effective_fps <= 0.0 {
+                return; // Need at least two estimate calls to measure FPS
+            }
+        } else {
+            // Still track timing for potential FPS updates
+            if let Some(last_time) = self.last_estimate_time {
+                let elapsed = last_time.elapsed().as_secs_f32();
+                if elapsed > 0.05 && self.frames_since_estimate > 0 {
+                    // Smooth FPS measurement to avoid jitter
+                    let measured = self.frames_since_estimate as f32 / elapsed;
+                    self.effective_fps = self.effective_fps * 0.8 + measured * 0.2;
+                }
+            }
+            self.last_estimate_time = Some(std::time::Instant::now());
+            self.frames_since_estimate = 0;
+        }
+
         let mut scratch = Vec::with_capacity(self.onset_buf.len());
         let len = self.linearize_onset(&mut scratch);
         if len < 60 {
             return;
         }
 
-        // Lag range from BPM bounds (at 60 FPS)
-        let fps = 60.0_f32;
+        let fps = self.effective_fps;
         let min_lag = (fps * 60.0 / config.tempo_max_bpm) as usize; // high BPM = short lag
         let max_lag = (fps * 60.0 / config.tempo_min_bpm) as usize; // low BPM = long lag
         let max_lag = max_lag.min(len / 2); // Don't exceed half the buffer
@@ -746,7 +789,7 @@ mod tests {
     #[test]
     fn test_tempo_silence_produces_no_bpm() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Feed 300 frames of zero onset strength, no beats
         for _ in 0..300 {
             estimator.update(0.0, false, &config);
@@ -763,7 +806,7 @@ mod tests {
     #[test]
     fn test_tempo_steady_120_bpm() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // 120 BPM at 60 FPS = beat every 30 frames
         // Simulate 8 seconds (480 frames)
         for frame in 0..480 {
@@ -787,7 +830,7 @@ mod tests {
     #[test]
     fn test_tempo_steady_140_bpm() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // 140 BPM at 60 FPS = beat every ~25.7 frames
         let frames_per_beat = 60.0 / (140.0 / 60.0);
         let mut next_beat = 0.0_f64;
@@ -810,7 +853,7 @@ mod tests {
     #[test]
     fn test_tempo_half_double_resolution() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // 120 BPM (beat every 30 frames) — should NOT report 60 or 240
         for frame in 0..600 {
             let is_beat_frame = frame % 30 == 0;
@@ -828,7 +871,7 @@ mod tests {
     #[test]
     fn test_tempo_onset_buffer_fills() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Feed some onset strength values
         for i in 0..50 {
             estimator.update(i as f32 * 0.1, false, &config);
@@ -840,7 +883,7 @@ mod tests {
     #[test]
     fn test_tempo_phase_resets_on_beat() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Establish tempo first
         for frame in 0..480 {
             let is_beat = frame % 30 == 0;
@@ -859,7 +902,7 @@ mod tests {
     #[test]
     fn test_tempo_phase_accumulates() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Establish 120 BPM
         for frame in 0..480 {
             let is_beat = frame % 30 == 0;
@@ -884,7 +927,7 @@ mod tests {
     #[test]
     fn test_tempo_no_prediction_when_confidence_low() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Don't establish tempo — just feed zeros
         for _ in 0..300 {
             estimator.update(0.0, false, &config);
@@ -900,7 +943,7 @@ mod tests {
     fn test_tempo_prediction_fires_on_phase_wrap() {
         let mut config = make_config();
         config.prediction_strength = 0.5;
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Establish 120 BPM
         for frame in 0..480 {
             let is_beat = frame % 30 == 0;
@@ -922,7 +965,7 @@ mod tests {
     #[test]
     fn test_tempo_change_converges() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Establish 120 BPM (beat every 30 frames)
         for frame in 0..480 {
             let is_beat = frame % 30 == 0;
@@ -952,7 +995,7 @@ mod tests {
     #[test]
     fn test_tempo_hysteresis_holds_through_gap() {
         let config = make_config();
-        let mut estimator = TempoEstimator::new(&config);
+        let mut estimator = TempoEstimator::with_fps(&config, 60.0);
         // Establish 120 BPM
         for frame in 0..480 {
             let is_beat = frame % 30 == 0;
