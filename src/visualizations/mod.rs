@@ -1,8 +1,13 @@
+pub mod aurora;
 pub mod lissajous;
+pub mod plasma;
+pub mod radial;
+pub mod rain;
 pub mod registry;
 pub mod render;
 pub mod spectrogram;
 pub mod spectrum;
+pub mod starfield;
 pub mod tunnel;
 pub mod waveform;
 
