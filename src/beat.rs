@@ -901,6 +901,36 @@ mod tests {
     }
 
     #[test]
+    fn test_tempo_change_converges() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Establish 120 BPM (beat every 30 frames)
+        for frame in 0..480 {
+            let is_beat = frame % 30 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        let bpm1 = estimator.tempo_data().bpm;
+        assert!(
+            (bpm1 - 120.0).abs() < 3.0,
+            "Should start at ~120, got {}",
+            bpm1
+        );
+
+        // Switch to ~90 BPM (beat every 40 frames)
+        // Need enough time for buffer to fill with new tempo
+        for frame in 0..600 {
+            let is_beat = frame % 40 == 0;
+            estimator.update(if is_beat { 1.0 } else { 0.0 }, is_beat, &config);
+        }
+        let bpm2 = estimator.tempo_data().bpm;
+        assert!(
+            (bpm2 - 90.0).abs() < 5.0,
+            "Should converge to ~90, got {}",
+            bpm2
+        );
+    }
+
+    #[test]
     fn test_tempo_hysteresis_holds_through_gap() {
         let config = make_config();
         let mut estimator = TempoEstimator::new(&config);
