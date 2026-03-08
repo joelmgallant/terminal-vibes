@@ -4,7 +4,7 @@ A real-time terminal music visualizer for macOS. Captures system audio and rende
 
 Built with Rust, Core Audio, and [ratatui](https://github.com/ratatui/ratatui).
 
-<video src="terminal-vibes.mp4" autoplay loop muted playsinline></video>
+https://github.com/user-attachments/assets/f05ef7fd-fa78-4616-abf4-30affbe15c41
 
 ## Requirements
 
