@@ -3,6 +3,7 @@ pub mod registry;
 pub mod render;
 pub mod spectrogram;
 pub mod spectrum;
+pub mod tunnel;
 pub mod waveform;
 
 use crate::processing::FrameData;
