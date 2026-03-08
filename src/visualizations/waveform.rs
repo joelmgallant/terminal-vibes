@@ -4,9 +4,14 @@ use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use std::collections::VecDeque;
+
+/// Rolling sample history size — ~4 frames of audio at 2048 samples/frame.
+/// Larger = slower scroll, smaller = faster scroll.
+const MAX_HISTORY: usize = 8192;
 
 pub struct Waveform {
-    samples: Vec<f32>,
+    history: VecDeque<f32>,
     color: Color,
     beat_envelope: f32,
 }
@@ -14,7 +19,7 @@ pub struct Waveform {
 impl Waveform {
     pub fn new() -> Self {
         Self {
-            samples: Vec::new(),
+            history: VecDeque::with_capacity(MAX_HISTORY),
             color: Color::from_u32(0x0000ff88),
             beat_envelope: 0.0,
         }
@@ -27,12 +32,18 @@ impl Visualization for Waveform {
     }
 
     fn update(&mut self, frame: &FrameData) {
-        self.samples = frame.waveform.clone();
+        // Append new samples — old ones scroll off the left
+        for &s in &frame.waveform {
+            self.history.push_back(s);
+        }
+        while self.history.len() > MAX_HISTORY {
+            self.history.pop_front();
+        }
         self.beat_envelope = frame.beat.envelope;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
-        if area.width == 0 || area.height == 0 || self.samples.is_empty() {
+        if area.width == 0 || area.height == 0 || self.history.is_empty() {
             return;
         }
 
@@ -50,10 +61,12 @@ impl Visualization for Waveform {
             self.color
         });
 
+        let history_len = self.history.len();
+
         for x in 0..area.width {
-            // Map terminal column to sample index
-            let sample_idx = (x as usize * self.samples.len()) / area.width as usize;
-            let sample = self.samples[sample_idx.min(self.samples.len() - 1)];
+            // Map terminal column to history index
+            let sample_idx = (x as usize * history_len) / area.width as usize;
+            let sample = self.history[sample_idx.min(history_len - 1)];
 
             // Map sample (-1.0..1.0) to y position
             let half_h = area.height as f32 / 2.0;

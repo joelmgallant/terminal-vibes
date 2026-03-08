@@ -106,7 +106,7 @@ impl Visualization for Lissajous {
             .map(|i| {
                 let t = i as f32 / num_points as f32 * 2.0 * PI;
                 let x = (a * t + self.phase_x + self.time).sin() * scale;
-                let y = (b * t + self.phase_y).sin() * scale;
+                let y = (b * t + self.phase_y + self.time * 0.7).sin() * scale;
                 (x, y)
             })
             .collect();
@@ -118,7 +118,7 @@ impl Visualization for Lissajous {
             self.trail.pop_front();
         }
 
-        self.time += 0.02 + self.rms * 0.03;
+        self.time += 0.05 + self.rms * 0.05;
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {

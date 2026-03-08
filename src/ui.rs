@@ -109,6 +109,19 @@ impl App {
                 let viz_area = chunks[0];
                 self.registry.render_current(viz_area, f.buffer_mut());
 
+                // Visualization name label (bottom-center overlay)
+                if viz_area.height > 2 {
+                    let name = self.registry.current().map(|v| v.name()).unwrap_or("none");
+                    let label = format!(" {} ", name);
+                    let label_w = label.len() as u16;
+                    let label_x = viz_area.x + viz_area.width.saturating_sub(label_w) / 2;
+                    let label_y = viz_area.y + viz_area.height - 1;
+                    let label_area = Rect::new(label_x, label_y, label_w.min(viz_area.width), 1);
+                    let label_widget = Paragraph::new(label)
+                        .style(Style::default().fg(Color::Gray).bg(Color::Black));
+                    f.render_widget(label_widget, label_area);
+                }
+
                 // Status bar
                 if self.config.display.show_status_bar && chunks.len() > 1 {
                     let mode_name = self.registry.current().map(|v| v.name()).unwrap_or("none");
