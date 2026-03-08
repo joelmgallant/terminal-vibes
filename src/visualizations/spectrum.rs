@@ -68,6 +68,29 @@ impl ColorPalette {
         Self::ALL.iter().find(|p| p.name() == name).copied()
     }
 
+    /// Returns a color for position `t` that wraps seamlessly for cycling.
+    /// A small fraction of the cycle blends from the last palette color back
+    /// to the first, eliminating the hard edge at the wrap boundary.
+    pub fn color_cyclic(self, t: f32) -> Color {
+        let wrap_frac = 0.125; // 12.5% of cycle for smooth wrap-around
+        let t = t.fract().max(0.0);
+        let main_end = 1.0 - wrap_frac;
+
+        if t <= main_end {
+            self.color(t / main_end)
+        } else {
+            let s = (t - main_end) / wrap_frac;
+            let end_color = self.color(1.0);
+            let start_color = self.color(0.0);
+            match (end_color, start_color) {
+                (Color::Rgb(r0, g0, b0), Color::Rgb(r1, g1, b1)) => {
+                    Color::Rgb(lerp_u8(r0, r1, s), lerp_u8(g0, g1, s), lerp_u8(b0, b1, s))
+                }
+                _ => start_color,
+            }
+        }
+    }
+
     /// Returns a color for position `t` (0.0 = bass/left, 1.0 = treble/right)
     pub fn color(self, t: f32) -> Color {
         match self {
@@ -173,7 +196,11 @@ impl Visualization for SpectrumBars {
             } else {
                 t
             };
-            let base_color = self.palette.color(color_t);
+            let base_color = if self.cycling {
+                self.palette.color_cyclic(color_t)
+            } else {
+                self.palette.color(color_t)
+            };
             // Bars stay bright, beat adds a white-hot glow on top
             let color = quantize_color(if let Color::Rgb(r, g, b) = base_color {
                 let boost = self.beat_envelope * 0.4;
