@@ -1,14 +1,14 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::spectrum::ColorPalette;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 struct Drop {
-    y: f32,        // current row position
-    speed: f32,    // rows per update
-    length: u16,   // tail length
+    y: f32,      // current row position
+    speed: f32,  // rows per update
+    length: u16, // tail length
     brightness: f32,
 }
 
@@ -50,6 +50,7 @@ impl Rain {
         self.columns.truncate(width);
     }
 
+    #[allow(dead_code)]
     fn column_energy(&self, col: usize, total_cols: usize) -> f32 {
         if self.spectrum.is_empty() || total_cols == 0 {
             return 0.3;
@@ -173,14 +174,20 @@ impl Visualization for Rain {
             }
             crossterm::event::KeyCode::Char('p') => {
                 let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
-                let idx = names.iter().position(|n| *n == self.palette.name()).unwrap_or(0);
-                self.palette = ColorPalette::from_name(names[(idx + 1) % names.len()])
-                    .unwrap_or(self.palette);
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
+                self.palette =
+                    ColorPalette::from_name(names[(idx + 1) % names.len()]).unwrap_or(self.palette);
                 true
             }
             crossterm::event::KeyCode::Char('P') => {
                 let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
-                let idx = names.iter().position(|n| *n == self.palette.name()).unwrap_or(0);
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
                 let prev = if idx == 0 { names.len() - 1 } else { idx - 1 };
                 self.palette = ColorPalette::from_name(names[prev]).unwrap_or(self.palette);
                 true

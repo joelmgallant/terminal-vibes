@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 /// Beat detection output data, attached to each `FrameData`.
 #[derive(Debug, Clone)]
 pub struct BeatData {

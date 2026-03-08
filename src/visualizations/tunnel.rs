@@ -22,6 +22,7 @@ impl TunnelShape {
         }
     }
 
+    #[allow(dead_code)]
     fn name(self) -> &'static str {
         match self {
             TunnelShape::Circle => "circle",

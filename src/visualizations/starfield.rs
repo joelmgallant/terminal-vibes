@@ -1,6 +1,6 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::render::BrailleCanvas;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -40,6 +40,7 @@ pub struct Starfield {
     prev_peak: f32,
     frame_counter: u32,
     density: usize,
+    #[allow(dead_code)]
     color: Color,
 }
 

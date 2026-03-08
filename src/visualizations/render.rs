@@ -22,6 +22,7 @@ const BRAILLE_DOT_MAP: [[u8; 4]; 2] = [
     [3, 4, 5, 7], // right column (x%2 == 1)
 ];
 
+#[allow(dead_code)]
 impl BrailleCanvas {
     pub fn new(cols: u16, rows: u16) -> Self {
         let pw = cols as usize * 2;
@@ -83,11 +84,13 @@ impl BrailleCanvas {
 // --- Common math helpers ---
 
 /// Linear interpolation between a and b.
+#[allow(dead_code)]
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
 /// Hermite smoothstep (smooth 0->1 curve).
+#[allow(dead_code)]
 pub fn smoothstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
@@ -103,6 +106,7 @@ pub struct HalfBlockCanvas {
     pixels: Vec<Option<Color>>,
 }
 
+#[allow(dead_code)]
 impl HalfBlockCanvas {
     pub fn new(cols: u16, rows: u16) -> Self {
         let pw = cols as usize;
