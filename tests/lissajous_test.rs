@@ -117,5 +117,8 @@ fn test_lissajous_recycling_across_many_updates() {
             ch != ' ' && ch != '\u{2800}'
         })
     });
-    assert!(has_content, "Lissajous should render content after trail recycling");
+    assert!(
+        has_content,
+        "Lissajous should render content after trail recycling"
+    );
 }
