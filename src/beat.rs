@@ -150,14 +150,14 @@ impl BandDetector {
         }
         let mut sorted: Vec<f32> = values[..len].to_vec();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        if len % 2 == 0 {
+        if len.is_multiple_of(2) {
             (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
         } else {
             sorted[len / 2]
         }
     }
 
-    fn analyze(&mut self, bins: &[f32], config: &BeatDetectionConfig) -> (bool, f32, f32) {
+    fn analyze(&mut self, bins: &[f32], config: &BeatDetectionConfig) -> (bool, f32, f32, f32) {
         let energy = Self::compute_energy(bins);
         let flux = Self::compute_flux(bins, &self.previous_bins);
 
@@ -194,10 +194,11 @@ impl BandDetector {
             self.envelope *= config.envelope_decay;
         }
 
-        (beat, self.envelope, energy)
+        (beat, self.envelope, energy, flux)
     }
 }
 
+#[allow(dead_code)]
 struct TempoEstimator {
     /// Ring buffer of onset strength values
     onset_buf: Vec<f32>,
@@ -262,7 +263,7 @@ impl TempoEstimator {
         }
 
         // Periodically recompute BPM
-        if self.frame_count % config.tempo_update_interval == 0 && self.onset_len >= 60 {
+        if self.frame_count.is_multiple_of(config.tempo_update_interval) && self.onset_len >= 60 {
             self.estimate_tempo(config);
         }
     }
@@ -418,6 +419,7 @@ pub struct BeatDetector {
     config: BeatDetectionConfig,
     bass_end: usize,
     mid_end: usize,
+    tempo: TempoEstimator,
 }
 
 impl BeatDetector {
@@ -432,6 +434,8 @@ impl BeatDetector {
         let bass_end = bass_end.clamp(1, num_bands - 2);
         let mid_end = mid_end.clamp(bass_end + 1, num_bands - 1);
 
+        let tempo = TempoEstimator::new(&config);
+
         Self {
             bass: BandDetector::new(config.flux_history_frames),
             mid: BandDetector::new(config.flux_history_frames),
@@ -439,29 +443,35 @@ impl BeatDetector {
             bass_end,
             mid_end,
             config,
+            tempo,
         }
     }
 
-    pub fn analyze(&mut self, spectrum: &[f32]) -> BeatData {
+    pub fn analyze(&mut self, spectrum: &[f32]) -> (BeatData, TempoData) {
         let num_bands = spectrum.len();
         if num_bands == 0 {
-            return BeatData::default();
+            return (BeatData::default(), TempoData::default());
         }
 
         let bass_end = self.bass_end.min(num_bands);
         let mid_end = self.mid_end.min(num_bands);
 
-        let (bass_beat, bass_envelope, bass_energy) =
+        let (bass_beat, bass_envelope, bass_energy, bass_flux) =
             self.bass.analyze(&spectrum[..bass_end], &self.config);
-        let (mid_beat, mid_envelope, mid_energy) =
+        let (mid_beat, mid_envelope, mid_energy, mid_flux) =
             self.mid.analyze(&spectrum[bass_end..mid_end], &self.config);
-        let (treble_beat, treble_envelope, treble_energy) =
+        let (treble_beat, treble_envelope, treble_energy, treble_flux) =
             self.treble.analyze(&spectrum[mid_end..], &self.config);
 
         let beat = bass_beat || mid_beat || treble_beat;
         let envelope = bass_envelope.max(mid_envelope).max(treble_envelope);
 
-        BeatData {
+        // Combined onset strength: bass-weighted sum of per-band flux
+        let onset_strength = bass_flux * 0.6 + mid_flux * 0.25 + treble_flux * 0.15;
+
+        self.tempo.update(onset_strength, beat, &self.config);
+
+        let beat_data = BeatData {
             bass_energy,
             mid_energy,
             treble_energy,
@@ -473,7 +483,9 @@ impl BeatDetector {
             treble_envelope,
             beat,
             envelope,
-        }
+        };
+
+        (beat_data, self.tempo.tempo_data())
     }
 }
 
@@ -489,7 +501,7 @@ mod tests {
     fn test_silence_produces_zero_energy() {
         let mut detector = BeatDetector::new(128, make_config());
         let spectrum = vec![0.0_f32; 128];
-        let beat = detector.analyze(&spectrum);
+        let (beat, _) = detector.analyze(&spectrum);
         assert_eq!(beat.bass_energy, 0.0);
         assert_eq!(beat.mid_energy, 0.0);
         assert_eq!(beat.treble_energy, 0.0);
@@ -503,7 +515,7 @@ mod tests {
         for i in 0..37 {
             spectrum[i] = 0.8;
         }
-        let beat = detector.analyze(&spectrum);
+        let (beat, _) = detector.analyze(&spectrum);
         assert!(
             beat.bass_energy > 0.5,
             "Bass energy should be high, got {}",
@@ -528,7 +540,7 @@ mod tests {
         for i in 97..128 {
             spectrum[i] = 0.8;
         }
-        let beat = detector.analyze(&spectrum);
+        let (beat, _) = detector.analyze(&spectrum);
         assert!(
             beat.treble_energy > 0.3,
             "Treble energy should be high, got {}",
@@ -546,7 +558,7 @@ mod tests {
         let mut detector = BeatDetector::new(128, make_config());
         let spectrum = vec![0.0_f32; 128];
         for _ in 0..50 {
-            let beat = detector.analyze(&spectrum);
+            let (beat, _) = detector.analyze(&spectrum);
             assert!(!beat.bass_beat, "No beats on silence");
             assert!(!beat.beat, "No overall beat on silence");
         }
@@ -566,7 +578,7 @@ mod tests {
             detector.analyze(&quiet);
         }
 
-        let beat = detector.analyze(&loud);
+        let (beat, _) = detector.analyze(&loud);
         assert!(beat.bass_beat, "Bass beat should fire on energy spike");
         assert!(beat.beat, "Overall beat should fire");
     }
@@ -589,11 +601,11 @@ mod tests {
             detector.analyze(&quiet);
         }
 
-        let beat1 = detector.analyze(&loud);
+        let (beat1, _) = detector.analyze(&loud);
         assert!(beat1.bass_beat, "First spike should beat");
 
         detector.analyze(&quiet);
-        let beat2 = detector.analyze(&loud);
+        let (beat2, _) = detector.analyze(&loud);
         assert!(!beat2.bass_beat, "Cooldown should prevent rapid re-trigger");
     }
 
@@ -611,7 +623,7 @@ mod tests {
             detector.analyze(&quiet);
         }
 
-        let beat = detector.analyze(&loud);
+        let (beat, _) = detector.analyze(&loud);
         assert!(
             beat.bass_envelope > 0.9,
             "Envelope should snap to ~1.0 on beat"
@@ -619,7 +631,7 @@ mod tests {
 
         let mut prev_env = beat.bass_envelope;
         for _ in 0..10 {
-            let b = detector.analyze(&quiet);
+            let (b, _) = detector.analyze(&quiet);
             assert!(
                 b.bass_envelope < prev_env,
                 "Envelope should decay each frame"
@@ -645,7 +657,7 @@ mod tests {
             detector.analyze(&quiet);
         }
 
-        let beat = detector.analyze(&loud_treble);
+        let (beat, _) = detector.analyze(&loud_treble);
         assert!(
             (beat.envelope - beat.treble_envelope).abs() < 0.01
                 || beat.envelope >= beat.treble_envelope,
@@ -672,7 +684,7 @@ mod tests {
         let mut beats_detected = 0;
         for _beat_num in 0..8 {
             // Kick frame
-            let result = detector.analyze(&kick);
+            let (result, _) = detector.analyze(&kick);
             if result.bass_beat {
                 beats_detected += 1;
             }
@@ -708,7 +720,7 @@ mod tests {
         // Send blips — should NOT trigger beats due to energy floor
         let mut false_beats = 0;
         for _ in 0..20 {
-            let result = detector.analyze(&tiny_blip);
+            let (result, _) = detector.analyze(&tiny_blip);
             if result.bass_beat {
                 false_beats += 1;
             }

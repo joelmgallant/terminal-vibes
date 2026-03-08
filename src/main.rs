@@ -127,7 +127,9 @@ fn main() -> Result<()> {
             // Process all available windows (prevents accum growth under load)
             while accum.len() >= fft_size {
                 let mut frame = processor.process(&accum[..fft_size]);
-                frame.beat = beat_detector.analyze(&frame.spectrum);
+                let (beat_data, tempo_data) = beat_detector.analyze(&frame.spectrum);
+                frame.beat = beat_data;
+                frame.tempo = tempo_data;
                 let _ = frame_tx.try_send(frame);
 
                 // Slide: keep the last half for overlap
