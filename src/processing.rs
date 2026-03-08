@@ -1,5 +1,7 @@
-use rustfft::{num_complex::Complex, FftPlanner};
+use rustfft::num_complex::Complex;
+use rustfft::{Fft, FftPlanner};
 use std::f32::consts::PI;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
 pub struct FrameData {
@@ -19,27 +21,41 @@ pub struct ProcessorConfig {
 
 pub struct Processor {
     config: ProcessorConfig,
-    planner: FftPlanner<f32>,
+    fft: Arc<dyn Fft<f32>>,
     window: Vec<f32>,
     smoothed_spectrum: Vec<f32>,
+    // Pre-allocated reusable buffers — no per-frame allocations
+    fft_buffer: Vec<Complex<f32>>,
+    scratch: Vec<Complex<f32>>,
+    magnitudes: Vec<f32>,
+    spectrum_buf: Vec<f32>,
 }
 
 impl Processor {
     pub fn new(config: ProcessorConfig) -> Self {
         let window = hann_window(config.fft_size);
         let smoothed_spectrum = vec![0.0; config.num_bands];
+
+        let mut planner = FftPlanner::new();
+        let fft = planner.plan_fft_forward(config.fft_size);
+        let scratch_len = fft.get_inplace_scratch_len();
+
         Self {
-            config,
-            planner: FftPlanner::new(),
+            fft,
             window,
             smoothed_spectrum,
+            fft_buffer: vec![Complex::new(0.0, 0.0); config.fft_size],
+            scratch: vec![Complex::new(0.0, 0.0); scratch_len],
+            magnitudes: vec![0.0; config.fft_size / 2],
+            spectrum_buf: vec![0.0; config.num_bands],
+            config,
         }
     }
 
     pub fn process(&mut self, samples: &[f32]) -> FrameData {
         let n = self.config.fft_size.min(samples.len());
 
-        // Waveform: raw samples
+        // Waveform: raw samples (allocation needed for cross-thread transfer)
         let waveform = samples[..n].to_vec();
 
         // Peak and RMS
@@ -53,31 +69,29 @@ impl Processor {
             / n as f32)
             .sqrt();
 
-        // Apply window and run FFT
-        let mut buffer: Vec<Complex<f32>> = samples[..n]
-            .iter()
-            .zip(self.window.iter())
-            .map(|(&s, &w)| Complex::new(s * w, 0.0))
-            .collect();
+        // Apply window into pre-allocated FFT buffer
+        for (i, (&s, &w)) in samples[..n].iter().zip(self.window.iter()).enumerate() {
+            self.fft_buffer[i] = Complex::new(s * w, 0.0);
+        }
+        for slot in &mut self.fft_buffer[n..] {
+            *slot = Complex::new(0.0, 0.0);
+        }
 
-        // Pad to fft_size if needed
-        buffer.resize(self.config.fft_size, Complex::new(0.0, 0.0));
+        // Run FFT with pre-allocated scratch (no internal allocation)
+        self.fft
+            .process_with_scratch(&mut self.fft_buffer, &mut self.scratch);
 
-        let fft = self.planner.plan_fft_forward(self.config.fft_size);
-        fft.process(&mut buffer);
-
-        // Compute magnitudes (only first half — Nyquist)
+        // Compute magnitudes into pre-allocated buffer
         let half = self.config.fft_size / 2;
-        let magnitudes: Vec<f32> = buffer[..half]
-            .iter()
-            .map(|c| c.norm() / half as f32)
-            .collect();
+        for (i, c) in self.fft_buffer[..half].iter().enumerate() {
+            self.magnitudes[i] = c.norm() / half as f32;
+        }
 
-        // Bin into logarithmic frequency bands
-        let spectrum = bin_to_bands(&magnitudes, self.config.num_bands, self.config.db_floor);
+        // Bin into logarithmic frequency bands (writes into pre-allocated slice)
+        bin_to_bands_into(&self.magnitudes, &mut self.spectrum_buf, self.config.db_floor);
 
         // Apply smoothing
-        for (i, val) in spectrum.iter().enumerate() {
+        for (i, val) in self.spectrum_buf.iter().enumerate() {
             let s = self.config.smoothing as f32;
             self.smoothed_spectrum[i] = self.smoothed_spectrum[i] * s + val * (1.0 - s);
         }
@@ -101,14 +115,14 @@ fn hann_window(size: usize) -> Vec<f32> {
 ///
 /// Uses a true log scale from `f_min` to `f_max` Hz so that bass frequencies
 /// get good resolution on the left and treble compresses naturally on the right.
-/// Output is normalized to 0.0..1.0 based on dB floor.
-fn bin_to_bands(magnitudes: &[f32], num_bands: usize, db_floor: f32) -> Vec<f32> {
+/// Writes normalized 0.0..1.0 values into the pre-allocated `bands` slice.
+fn bin_to_bands_into(magnitudes: &[f32], bands: &mut [f32], db_floor: f32) {
     let n = magnitudes.len();
+    let num_bands = bands.len();
     if n == 0 || num_bands == 0 {
-        return vec![0.0; num_bands];
+        bands.fill(0.0);
+        return;
     }
-
-    let mut bands = vec![0.0_f32; num_bands];
 
     // Perceptual frequency range: 30 Hz to ~18 kHz mapped across bands.
     // We work in bin-index space: bin = freq * fft_size / sample_rate.
@@ -141,8 +155,6 @@ fn bin_to_bands(magnitudes: &[f32], num_bands: usize, db_floor: f32) -> Vec<f32>
 
         bands[band] = ((db - db_floor) / -db_floor).clamp(0.0, 1.0);
     }
-
-    bands
 }
 
 #[cfg(test)]
@@ -166,7 +178,8 @@ mod tests {
     #[test]
     fn test_bin_to_bands_silence() {
         let mags = vec![0.0; 512];
-        let bands = bin_to_bands(&mags, 16, -60.0);
+        let mut bands = vec![0.0; 16];
+        bin_to_bands_into(&mags, &mut bands, -60.0);
         for b in &bands {
             assert!(*b <= 0.01);
         }

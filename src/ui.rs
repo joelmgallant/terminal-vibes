@@ -53,6 +53,7 @@ impl App {
 
         let frame_duration = Duration::from_millis(1000 / self.config.display.fps.max(1) as u64);
         let mut last_frame = FrameData::default();
+        let mut display_frame = FrameData::default();
 
         while self.running.load(Ordering::Relaxed) {
             let loop_start = Instant::now();
@@ -62,8 +63,8 @@ impl App {
                 last_frame = frame;
             }
 
-            // Scale spectrum by sensitivity
-            let mut display_frame = last_frame.clone();
+            // Scale spectrum by sensitivity (reuses existing Vec capacity via clone_from)
+            display_frame.clone_from(&last_frame);
             for val in &mut display_frame.spectrum {
                 *val = (*val * self.sensitivity).clamp(0.0, 1.0);
             }

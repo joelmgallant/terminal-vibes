@@ -101,8 +101,8 @@ fn main() -> Result<()> {
                 accum.extend_from_slice(&drain_buf[..count]);
             }
 
-            // Process whenever we have enough samples
-            if accum.len() >= fft_size {
+            // Process all available windows (prevents accum growth under load)
+            while accum.len() >= fft_size {
                 let frame = processor.process(&accum[..fft_size]);
                 let _ = frame_tx.try_send(frame);
 
