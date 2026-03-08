@@ -3,9 +3,7 @@ use crate::processing::FrameData;
 use crate::visualizations::registry::VisualizationRegistry;
 use anyhow::Result;
 use crossterm::{
-    event::{
-        self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEvent, KeyModifiers,
-    },
+    event::{self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEvent, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };

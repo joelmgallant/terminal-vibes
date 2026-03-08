@@ -267,9 +267,132 @@ impl TempoEstimator {
         }
     }
 
+    /// Linearize the ring buffer into a contiguous slice for autocorrelation.
+    /// Writes into the provided scratch buffer and returns the filled length.
+    fn linearize_onset(&self, scratch: &mut Vec<f32>) -> usize {
+        scratch.clear();
+        let len = self.onset_len;
+        let cap = self.onset_buf.len();
+        if len < cap {
+            // Buffer hasn't wrapped yet — data is at [0..len]
+            scratch.extend_from_slice(&self.onset_buf[..len]);
+        } else {
+            // Buffer has wrapped — oldest at onset_pos, newest at onset_pos-1
+            scratch.extend_from_slice(&self.onset_buf[self.onset_pos..]);
+            scratch.extend_from_slice(&self.onset_buf[..self.onset_pos]);
+        }
+        scratch.len()
+    }
+
+    /// Compute normalized autocorrelation at a specific lag.
+    fn autocorrelate_at_lag(signal: &[f32], lag: usize) -> f32 {
+        let n = signal.len();
+        if lag >= n {
+            return 0.0;
+        }
+        let mut sum = 0.0_f64;
+        let mut energy = 0.0_f64;
+        for i in 0..(n - lag) {
+            sum += signal[i] as f64 * signal[i + lag] as f64;
+            energy += signal[i] as f64 * signal[i] as f64;
+        }
+        if energy < 1e-10 {
+            return 0.0;
+        }
+        (sum / energy) as f32
+    }
+
+    /// Parabolic interpolation around a peak for sub-sample precision.
+    /// Returns (interpolated_lag, interpolated_value).
+    fn parabolic_interp(prev: f32, peak: f32, next: f32, peak_lag: usize) -> (f32, f32) {
+        let denom = prev - 2.0 * peak + next;
+        if denom.abs() < 1e-10 {
+            return (peak_lag as f32, peak);
+        }
+        let offset = 0.5 * (prev - next) / denom;
+        let interp_val = peak - 0.25 * (prev - next) * offset;
+        (peak_lag as f32 + offset, interp_val)
+    }
+
     fn estimate_tempo(&mut self, config: &BeatDetectionConfig) {
-        // Placeholder — Task 4 implements this
-        let _ = config;
+        let mut scratch = Vec::with_capacity(self.onset_buf.len());
+        let len = self.linearize_onset(&mut scratch);
+        if len < 60 {
+            return;
+        }
+
+        // Lag range from BPM bounds (at 60 FPS)
+        let fps = 60.0_f32;
+        let min_lag = (fps * 60.0 / config.tempo_max_bpm) as usize; // high BPM = short lag
+        let max_lag = (fps * 60.0 / config.tempo_min_bpm) as usize; // low BPM = long lag
+        let max_lag = max_lag.min(len / 2); // Don't exceed half the buffer
+
+        if min_lag >= max_lag {
+            return;
+        }
+
+        // Compute autocorrelation with harmonic summation
+        let mut best_score = 0.0_f32;
+        let mut best_lag = min_lag;
+        let mut best_raw = 0.0_f32;
+
+        for lag in min_lag..=max_lag {
+            let r = Self::autocorrelate_at_lag(&scratch, lag);
+
+            // Harmonic summation: add energy at lag/2, lag/3 (sub-harmonics help resolve octave)
+            let mut harmonic_sum = r;
+            let sub2 = lag / 2;
+            if sub2 >= min_lag {
+                harmonic_sum += 0.5 * Self::autocorrelate_at_lag(&scratch, sub2);
+            }
+            let sub3 = lag / 3;
+            if sub3 >= min_lag {
+                harmonic_sum += 0.3 * Self::autocorrelate_at_lag(&scratch, sub3);
+            }
+
+            if harmonic_sum > best_score {
+                best_score = harmonic_sum;
+                best_lag = lag;
+                best_raw = r;
+            }
+        }
+
+        // Parabolic interpolation for sub-frame precision
+        let (interp_lag, _interp_val) = if best_lag > min_lag && best_lag < max_lag {
+            let prev = Self::autocorrelate_at_lag(&scratch, best_lag - 1);
+            let next = Self::autocorrelate_at_lag(&scratch, best_lag + 1);
+            Self::parabolic_interp(prev, best_raw, next, best_lag)
+        } else {
+            (best_lag as f32, best_raw)
+        };
+
+        // Convert lag to BPM
+        let new_bpm = if interp_lag > 0.0 {
+            fps * 60.0 / interp_lag
+        } else {
+            0.0
+        };
+
+        // Confidence from peak autocorrelation (clamped to 0..1)
+        let new_confidence = best_raw.clamp(0.0, 1.0);
+
+        // Apply hysteresis
+        let decayed_confidence = self.confidence * config.tempo_hysteresis_decay;
+
+        if new_confidence >= config.tempo_confidence_threshold {
+            // Accept if within 5% of current, or significantly stronger
+            let bpm_close = self.bpm <= 0.0 || (new_bpm - self.bpm).abs() / self.bpm < 0.05;
+            let much_stronger = new_confidence > self.confidence * 1.3;
+
+            if bpm_close || much_stronger {
+                self.bpm = new_bpm;
+                self.confidence = new_confidence;
+            } else {
+                self.confidence = decayed_confidence.max(new_confidence * 0.5);
+            }
+        } else {
+            self.confidence = decayed_confidence;
+        }
     }
 
     fn tempo_data(&self) -> TempoData {
@@ -609,9 +732,71 @@ mod tests {
             "Silence should have near-zero confidence, got {}",
             tempo.confidence
         );
+        assert!(!tempo.predicted_beat, "No predicted beats during silence");
+    }
+
+    #[test]
+    fn test_tempo_steady_120_bpm() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // 120 BPM at 60 FPS = beat every 30 frames
+        // Simulate 8 seconds (480 frames)
+        for frame in 0..480 {
+            let is_beat_frame = frame % 30 == 0;
+            let onset = if is_beat_frame { 1.0 } else { 0.0 };
+            estimator.update(onset, is_beat_frame, &config);
+        }
+        let tempo = estimator.tempo_data();
         assert!(
-            !tempo.predicted_beat,
-            "No predicted beats during silence"
+            (tempo.bpm - 120.0).abs() < 3.0,
+            "Should estimate ~120 BPM, got {}",
+            tempo.bpm
+        );
+        assert!(
+            tempo.confidence > 0.5,
+            "Should have high confidence, got {}",
+            tempo.confidence
+        );
+    }
+
+    #[test]
+    fn test_tempo_steady_140_bpm() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // 140 BPM at 60 FPS = beat every ~25.7 frames
+        let frames_per_beat = 60.0 / (140.0 / 60.0);
+        let mut next_beat = 0.0_f64;
+        for frame in 0..600 {
+            let is_beat = frame as f64 >= next_beat;
+            let onset = if is_beat { 1.0 } else { 0.0 };
+            estimator.update(onset, is_beat, &config);
+            if is_beat {
+                next_beat += frames_per_beat as f64;
+            }
+        }
+        let tempo = estimator.tempo_data();
+        assert!(
+            (tempo.bpm - 140.0).abs() < 3.0,
+            "Should estimate ~140 BPM, got {}",
+            tempo.bpm
+        );
+    }
+
+    #[test]
+    fn test_tempo_half_double_resolution() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // 120 BPM (beat every 30 frames) — should NOT report 60 or 240
+        for frame in 0..600 {
+            let is_beat_frame = frame % 30 == 0;
+            let onset = if is_beat_frame { 1.0 } else { 0.0 };
+            estimator.update(onset, is_beat_frame, &config);
+        }
+        let tempo = estimator.tempo_data();
+        assert!(
+            tempo.bpm > 90.0 && tempo.bpm < 180.0,
+            "Should be in 90-180 range (not half/double), got {}",
+            tempo.bpm
         );
     }
 
