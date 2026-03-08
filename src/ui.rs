@@ -74,7 +74,8 @@ impl App {
 
         // Auto-detect tmux and cap FPS to avoid overwhelming the terminal
         // multiplexer with escape sequences from color-intensive visualizations.
-        let effective_fps = if std::env::var("TMUX").is_ok() {
+        let in_tmux = std::env::var("TMUX").is_ok();
+        let effective_fps = if in_tmux {
             self.config.display.fps.min(30)
         } else {
             self.config.display.fps
@@ -95,7 +96,7 @@ impl App {
             // When unfocused and the current visualization is heavy (full-screen
             // dual-RGB HalfBlockCanvas), skip rendering to avoid flooding tmux with
             // escape sequences. Lightweight visualizations keep rendering normally.
-            if !focused && self.registry.current_heavy_rendering() {
+            if in_tmux && !focused && self.registry.current_heavy_rendering() {
                 if event::poll(frame_duration)? {
                     match event::read()? {
                         Event::FocusGained => focused = true,
