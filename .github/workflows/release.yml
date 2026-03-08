@@ -28,10 +28,11 @@ jobs:
       - name: Install release-plz
         run: |
           curl -sSLf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall -y release-plz
+          cargo binstall -y --force release-plz
+          ls -la "$HOME/.cargo/bin/release-plz"
 
       - name: Bump version and update changelog
-        run: $HOME/.cargo/bin/release-plz update
+        run: "$HOME/.cargo/bin/release-plz" update
 
       - name: Check for releasable changes
         id: check
