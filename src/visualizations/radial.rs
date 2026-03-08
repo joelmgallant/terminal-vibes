@@ -36,7 +36,8 @@ impl Visualization for RadialSpectrum {
     }
 
     fn update(&mut self, frame: &FrameData) {
-        self.spectrum = frame.spectrum.clone();
+        self.spectrum.resize(frame.spectrum.len(), 0.0);
+        self.spectrum.copy_from_slice(&frame.spectrum);
         self.rms = frame.rms;
         self.beat_envelope = frame.beat.envelope;
         // Beat envelope spins it hard

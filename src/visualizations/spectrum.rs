@@ -142,7 +142,8 @@ impl Visualization for SpectrumBars {
     }
 
     fn update(&mut self, frame: &FrameData) {
-        self.spectrum = frame.spectrum.clone();
+        self.spectrum.resize(frame.spectrum.len(), 0.0);
+        self.spectrum.copy_from_slice(&frame.spectrum);
         self.beat_envelope = frame.beat.envelope;
         self.beat_fired = frame.beat.beat;
         // Color cycling accelerates dramatically with beat

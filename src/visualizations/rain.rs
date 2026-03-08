@@ -73,7 +73,8 @@ impl Visualization for Rain {
     fn update(&mut self, frame: &FrameData) {
         self.rms = frame.rms;
         self.peak = frame.peak;
-        self.spectrum = frame.spectrum.clone();
+        self.spectrum.resize(frame.spectrum.len(), 0.0);
+        self.spectrum.copy_from_slice(&frame.spectrum);
         self.beat_envelope = frame.beat.envelope;
         self.beat_fired = frame.beat.beat;
         self.frame_counter = self.frame_counter.wrapping_add(1);
