@@ -97,8 +97,8 @@ impl SpectrumBars {
     pub fn new() -> Self {
         Self {
             spectrum: Vec::new(),
-            gap: true,
-            chunky: false,
+            gap: false,
+            chunky: true,
             palette: ColorPalette::Neon,
         }
     }
