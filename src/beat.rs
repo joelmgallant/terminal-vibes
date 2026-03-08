@@ -263,7 +263,11 @@ impl TempoEstimator {
         }
 
         // Periodically recompute BPM
-        if self.frame_count.is_multiple_of(config.tempo_update_interval) && self.onset_len >= 60 {
+        if self
+            .frame_count
+            .is_multiple_of(config.tempo_update_interval)
+            && self.onset_len >= 60
+        {
             self.estimate_tempo(config);
         }
     }
@@ -960,7 +964,8 @@ mod tests {
         assert!(
             (tempo.bpm - bpm_before).abs() < 1.0,
             "BPM should hold through brief gap, was {} now {}",
-            bpm_before, tempo.bpm
+            bpm_before,
+            tempo.bpm
         );
         assert!(
             tempo.confidence > 0.0,
