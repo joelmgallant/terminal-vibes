@@ -91,6 +91,8 @@ pub struct SpectrumBars {
     gap: bool,
     chunky: bool,
     palette: ColorPalette,
+    cycling: bool,
+    phase: f32,
 }
 
 impl SpectrumBars {
@@ -100,6 +102,8 @@ impl SpectrumBars {
             gap: false,
             chunky: true,
             palette: ColorPalette::Neon,
+            cycling: false,
+            phase: 0.0,
         }
     }
 }
@@ -111,6 +115,9 @@ impl Visualization for SpectrumBars {
 
     fn update(&mut self, frame: &FrameData) {
         self.spectrum = frame.spectrum.clone();
+        if self.cycling {
+            self.phase = (self.phase + 0.005) % 1.0;
+        }
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -124,7 +131,10 @@ impl Visualization for SpectrumBars {
         let band_count = self.spectrum.len();
 
         // Sub-block characters for smooth vertical resolution (eighths)
-        let blocks = [' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}', '\u{2587}', '\u{2588}'];
+        let blocks = [
+            ' ', '\u{2581}', '\u{2582}', '\u{2583}', '\u{2584}', '\u{2585}', '\u{2586}',
+            '\u{2587}', '\u{2588}',
+        ];
 
         for i in 0..num_bars {
             // Map bar index to spectrum band with interpolation
@@ -140,7 +150,12 @@ impl Visualization for SpectrumBars {
             let value = value.clamp(0.0, 1.0);
 
             let x = area.x + (i as u16) * bar_step;
-            let color = self.palette.color(t);
+            let color_t = if self.cycling {
+                (t + self.phase) % 1.0
+            } else {
+                t
+            };
+            let color = self.palette.color(color_t);
 
             if self.chunky {
                 let full_cells = (value * area.height as f32).round() as u16;
@@ -194,6 +209,13 @@ impl Visualization for SpectrumBars {
                 self.chunky = !self.chunky;
                 true
             }
+            crossterm::event::KeyCode::Char('r') => {
+                self.cycling = !self.cycling;
+                if !self.cycling {
+                    self.phase = 0.0;
+                }
+                true
+            }
             crossterm::event::KeyCode::Char('p') => {
                 self.palette = self.palette.next();
                 true
@@ -208,9 +230,13 @@ impl Visualization for SpectrumBars {
 
     fn save_config(&self) -> toml::Value {
         let mut table = toml::value::Table::new();
-        table.insert("palette".to_string(), toml::Value::String(self.palette.name().to_string()));
+        table.insert(
+            "palette".to_string(),
+            toml::Value::String(self.palette.name().to_string()),
+        );
         table.insert("gap".to_string(), toml::Value::Boolean(self.gap));
         table.insert("chunky".to_string(), toml::Value::Boolean(self.chunky));
+        table.insert("cycling".to_string(), toml::Value::Boolean(self.cycling));
         toml::Value::Table(table)
     }
 
@@ -226,6 +252,9 @@ impl Visualization for SpectrumBars {
         if let Some(chunky) = config.get("chunky").and_then(|v| v.as_bool()) {
             self.chunky = chunky;
         }
+        if let Some(cycling) = config.get("cycling").and_then(|v| v.as_bool()) {
+            self.cycling = cycling;
+        }
     }
 }
 
@@ -235,13 +264,25 @@ impl Visualization for SpectrumBars {
 fn gradient_neon(t: f32) -> Color {
     if t < 0.33 {
         let s = t / 0.33;
-        Color::Rgb(lerp_u8(255, 50, s), lerp_u8(0, 100, s), lerp_u8(150, 255, s))
+        Color::Rgb(
+            lerp_u8(255, 50, s),
+            lerp_u8(0, 100, s),
+            lerp_u8(150, 255, s),
+        )
     } else if t < 0.66 {
         let s = (t - 0.33) / 0.33;
-        Color::Rgb(lerp_u8(50, 0, s), lerp_u8(100, 230, s), lerp_u8(255, 255, s))
+        Color::Rgb(
+            lerp_u8(50, 0, s),
+            lerp_u8(100, 230, s),
+            lerp_u8(255, 255, s),
+        )
     } else {
         let s = (t - 0.66) / 0.34;
-        Color::Rgb(lerp_u8(0, 50, s), lerp_u8(230, 255, s), lerp_u8(255, 100, s))
+        Color::Rgb(
+            lerp_u8(0, 50, s),
+            lerp_u8(230, 255, s),
+            lerp_u8(255, 100, s),
+        )
     }
 }
 
@@ -255,7 +296,11 @@ fn gradient_fire(t: f32) -> Color {
         Color::Rgb(lerp_u8(255, 255, s), lerp_u8(30, 150, s), lerp_u8(0, 0, s))
     } else {
         let s = (t - 0.66) / 0.34;
-        Color::Rgb(lerp_u8(255, 255, s), lerp_u8(150, 240, s), lerp_u8(0, 50, s))
+        Color::Rgb(
+            lerp_u8(255, 255, s),
+            lerp_u8(150, 240, s),
+            lerp_u8(0, 50, s),
+        )
     }
 }
 
@@ -269,7 +314,11 @@ fn gradient_ocean(t: f32) -> Color {
         Color::Rgb(lerp_u8(0, 0, s), lerp_u8(100, 200, s), lerp_u8(180, 220, s))
     } else {
         let s = (t - 0.66) / 0.34;
-        Color::Rgb(lerp_u8(0, 100, s), lerp_u8(200, 255, s), lerp_u8(220, 255, s))
+        Color::Rgb(
+            lerp_u8(0, 100, s),
+            lerp_u8(200, 255, s),
+            lerp_u8(220, 255, s),
+        )
     }
 }
 
@@ -280,13 +329,21 @@ fn gradient_sunset(t: f32) -> Color {
         Color::Rgb(lerp_u8(80, 180, s), lerp_u8(0, 20, s), lerp_u8(120, 100, s))
     } else if t < 0.50 {
         let s = (t - 0.25) / 0.25;
-        Color::Rgb(lerp_u8(180, 240, s), lerp_u8(20, 50, s), lerp_u8(100, 30, s))
+        Color::Rgb(
+            lerp_u8(180, 240, s),
+            lerp_u8(20, 50, s),
+            lerp_u8(100, 30, s),
+        )
     } else if t < 0.75 {
         let s = (t - 0.50) / 0.25;
         Color::Rgb(lerp_u8(240, 255, s), lerp_u8(50, 140, s), lerp_u8(30, 0, s))
     } else {
         let s = (t - 0.75) / 0.25;
-        Color::Rgb(lerp_u8(255, 255, s), lerp_u8(140, 220, s), lerp_u8(0, 50, s))
+        Color::Rgb(
+            lerp_u8(255, 255, s),
+            lerp_u8(140, 220, s),
+            lerp_u8(0, 50, s),
+        )
     }
 }
 
@@ -299,10 +356,18 @@ fn gradient_matrix(t: f32) -> Color {
 fn gradient_ice(t: f32) -> Color {
     if t < 0.5 {
         let s = t / 0.5;
-        Color::Rgb(lerp_u8(240, 150, s), lerp_u8(250, 200, s), lerp_u8(255, 255, s))
+        Color::Rgb(
+            lerp_u8(240, 150, s),
+            lerp_u8(250, 200, s),
+            lerp_u8(255, 255, s),
+        )
     } else {
         let s = (t - 0.5) / 0.5;
-        Color::Rgb(lerp_u8(150, 40, s), lerp_u8(200, 80, s), lerp_u8(255, 220, s))
+        Color::Rgb(
+            lerp_u8(150, 40, s),
+            lerp_u8(200, 80, s),
+            lerp_u8(255, 220, s),
+        )
     }
 }
 
