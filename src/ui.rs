@@ -177,7 +177,7 @@ impl App {
                 // Status bar
                 if self.config.display.show_status_bar && chunks.len() > 1 {
                     let mode_name = self.registry.current().map(|v| v.name()).unwrap_or("none");
-                    let beat_indicator = if display_frame.beat.beat {
+                    let beat_indicator = if display_frame.beat.beat || display_frame.tempo.predicted_beat {
                         "BEAT!"
                     } else {
                         "     "
