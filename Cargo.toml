@@ -3,6 +3,11 @@ name = "terminal-vibes"
 version = "0.1.0"
 edition = "2021"
 description = "Terminal-based music visualizer for macOS system audio"
+license = "MIT"
+repository = "https://github.com/joelmgallant/terminal-vibes"
+readme = "README.md"
+keywords = ["audio", "visualizer", "terminal", "music", "tui"]
+categories = ["command-line-utilities", "multimedia::audio", "visualization"]
 
 [dependencies]
 ratatui = "0.29"
