@@ -17,6 +17,7 @@ mod ui;
 mod visualizations;
 
 use audio::{AudioConfig, AudioTap};
+use beat::BeatDetector;
 use config::Config;
 use processing::{FrameData, Processor, ProcessorConfig};
 use ui::App;
@@ -101,6 +102,7 @@ fn main() -> Result<()> {
     // Spawn processor thread
     let fft_size = config.audio.fft_size;
     let smoothing = config.audio.smoothing;
+    let beat_detection_config = config.beat_detection.clone();
     let processor_handle = thread::spawn(move || {
         let mut processor = Processor::new(ProcessorConfig {
             fft_size,
@@ -108,6 +110,7 @@ fn main() -> Result<()> {
             num_bands: 128,
             db_floor: -60.0,
         });
+        let mut beat_detector = BeatDetector::new(128, beat_detection_config);
 
         // Accumulation buffer — we collect samples across multiple polls
         let mut accum = Vec::with_capacity(fft_size * 2);
@@ -123,7 +126,8 @@ fn main() -> Result<()> {
 
             // Process all available windows (prevents accum growth under load)
             while accum.len() >= fft_size {
-                let frame = processor.process(&accum[..fft_size]);
+                let mut frame = processor.process(&accum[..fft_size]);
+                frame.beat = beat_detector.analyze(&frame.spectrum);
                 let _ = frame_tx.try_send(frame);
 
                 // Slide: keep the last half for overlap
