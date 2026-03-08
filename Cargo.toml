@@ -1,6 +1,6 @@
 [package]
 name = "terminal-vibes"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 description = "Terminal-based music visualizer for macOS system audio"
 license = "MIT"
