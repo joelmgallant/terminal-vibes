@@ -51,16 +51,22 @@ pub struct BeatDetectionConfig {
     pub envelope_decay: f32,
     pub cooldown_frames: usize,
     pub history_frames: usize,
+    pub flux_sensitivity: f32,
+    pub flux_history_frames: usize,
+    pub energy_floor: f32,
 }
 
 impl Default for BeatDetectionConfig {
     fn default() -> Self {
         Self {
-            sensitivity: 1.4,
-            variance_scale: 1.0,
+            sensitivity: 1.2,
+            variance_scale: 0.4,
             envelope_decay: 0.95,
-            cooldown_frames: 6,
+            cooldown_frames: 4,
             history_frames: 43,
+            flux_sensitivity: 2.0,
+            flux_history_frames: 30,
+            energy_floor: 0.001,
         }
     }
 }
