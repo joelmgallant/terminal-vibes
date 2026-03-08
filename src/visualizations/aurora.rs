@@ -1,0 +1,163 @@
+use crate::processing::FrameData;
+use crate::visualizations::Visualization;
+use crate::visualizations::render::HalfBlockCanvas;
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Color;
+use std::f32::consts::PI;
+
+struct Curtain {
+    /// Base vertical position (0.0 = top, 1.0 = bottom)
+    base_y: f32,
+    /// Wave frequency
+    freq: f32,
+    /// Wave speed
+    speed: f32,
+    /// Height multiplier
+    height: f32,
+    /// Color (R, G, B)
+    color: (u8, u8, u8),
+}
+
+pub struct Aurora {
+    curtains: Vec<Curtain>,
+    time: f32,
+    rms: f32,
+    peak: f32,
+    band_energies: Vec<f32>,
+    num_layers: usize,
+}
+
+impl Aurora {
+    pub fn new() -> Self {
+        Self {
+            curtains: Self::make_curtains(3),
+            time: 0.0,
+            rms: 0.0,
+            peak: 0.0,
+            band_energies: Vec::new(),
+            num_layers: 3,
+        }
+    }
+
+    fn make_curtains(n: usize) -> Vec<Curtain> {
+        let configs: Vec<(f32, f32, f32, f32, (u8, u8, u8))> = vec![
+            (0.7, 2.0, 0.3, 0.4, (0, 200, 100)),   // green, low
+            (0.5, 3.0, 0.5, 0.3, (0, 150, 255)),    // blue, mid
+            (0.3, 4.5, 0.7, 0.2, (180, 0, 255)),    // purple, high
+            (0.4, 3.5, 0.4, 0.25, (0, 255, 200)),   // cyan, mid-high
+        ];
+        configs[..n.min(configs.len())]
+            .iter()
+            .map(|&(base_y, freq, speed, height, color)| Curtain {
+                base_y,
+                freq,
+                speed,
+                height,
+                color,
+            })
+            .collect()
+    }
+}
+
+impl Visualization for Aurora {
+    fn name(&self) -> &str {
+        "aurora"
+    }
+
+    fn update(&mut self, frame: &FrameData) {
+        self.rms = frame.rms;
+        self.peak = frame.peak;
+
+        // Split spectrum into per-curtain band energies
+        let n = self.curtains.len();
+        let band_count = frame.spectrum.len();
+        self.band_energies.clear();
+        if band_count > 0 && n > 0 {
+            let chunk = band_count / n;
+            for i in 0..n {
+                let start = i * chunk;
+                let end = if i == n - 1 { band_count } else { (i + 1) * chunk };
+                let energy = frame.spectrum[start..end].iter().sum::<f32>()
+                    / (end - start) as f32;
+                self.band_energies.push(energy);
+            }
+        }
+
+        self.time += 0.02 + self.rms * 0.04;
+    }
+
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+
+        let mut canvas = HalfBlockCanvas::new(area.width, area.height);
+        let pw = canvas.pixel_width();
+        let ph = canvas.pixel_height();
+
+        // For each column, compute each curtain's contribution
+        for px in 0..pw {
+            let x = px as f32 / pw as f32;
+
+            // Accumulate color per pixel row (additive blending)
+            let mut column_colors: Vec<(f32, f32, f32)> = vec![(0.0, 0.0, 0.0); ph];
+
+            for (i, curtain) in self.curtains.iter().enumerate() {
+                let energy = self.band_energies.get(i).copied().unwrap_or(0.3);
+
+                // Curtain center oscillates with sine wave
+                let wave = (x * curtain.freq * PI + self.time * curtain.speed).sin();
+                let center = curtain.base_y + wave * 0.1;
+                let height = curtain.height * (0.5 + energy);
+
+                // Brightness flash on peak
+                let brightness = 0.6 + energy * 0.3 + self.peak * 0.1;
+
+                for py in 0..ph {
+                    let y = py as f32 / ph as f32;
+                    let dist = (y - center).abs();
+                    if dist < height {
+                        // Smooth falloff from center
+                        let falloff = 1.0 - (dist / height);
+                        let falloff = falloff * falloff; // quadratic
+                        let intensity = falloff * brightness;
+
+                        column_colors[py].0 += curtain.color.0 as f32 * intensity;
+                        column_colors[py].1 += curtain.color.1 as f32 * intensity;
+                        column_colors[py].2 += curtain.color.2 as f32 * intensity;
+                    }
+                }
+            }
+
+            // Write blended colors to canvas
+            for (py, &(r, g, b)) in column_colors.iter().enumerate() {
+                if r > 1.0 || g > 1.0 || b > 1.0 {
+                    let color = Color::Rgb(
+                        (r as u8).min(255),
+                        (g as u8).min(255),
+                        (b as u8).min(255),
+                    );
+                    canvas.set(px, py, color);
+                }
+            }
+        }
+
+        canvas.render(&area, buf);
+    }
+
+    fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
+        match key.code {
+            crossterm::event::KeyCode::Char('l') => {
+                self.num_layers = match self.num_layers {
+                    2 => 3,
+                    3 => 4,
+                    _ => 2,
+                };
+                self.curtains = Self::make_curtains(self.num_layers);
+                true
+            }
+            _ => false,
+        }
+    }
+}
