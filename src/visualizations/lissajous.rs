@@ -1,6 +1,6 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::render::BrailleCanvas;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -30,6 +30,8 @@ pub struct Lissajous {
     /// Trail: recent curve snapshots for fading effect
     trail: Vec<Vec<(f32, f32)>>,
     color: Color,
+    beat_envelope: f32,
+    beat_fired: bool,
 }
 
 impl Lissajous {
@@ -45,6 +47,8 @@ impl Lissajous {
             rms: 0.0,
             trail: Vec::new(),
             color: Color::Rgb(0, 255, 200),
+            beat_envelope: 0.0,
+            beat_fired: false,
         }
     }
 
@@ -61,26 +65,30 @@ impl Visualization for Lissajous {
     fn update(&mut self, frame: &FrameData) {
         self.peak = frame.peak;
         self.rms = frame.rms;
+        self.beat_envelope = frame.beat.envelope;
+        self.beat_fired = frame.beat.beat;
 
         // Bass energy modulates phase_x, mid energy modulates phase_y
+        // Beat envelope adds extra phase velocity
         let band_count = frame.spectrum.len();
         if band_count > 0 {
-            let bass = frame.spectrum[..band_count / 3]
-                .iter()
-                .sum::<f32>()
-                / (band_count / 3) as f32;
+            let bass =
+                frame.spectrum[..band_count / 3].iter().sum::<f32>() / (band_count / 3) as f32;
             let mid = frame.spectrum[band_count / 3..2 * band_count / 3]
                 .iter()
                 .sum::<f32>()
                 / (band_count / 3) as f32;
-            self.phase_x += bass * 0.1;
-            self.phase_y += mid * 0.1;
+            let envelope_boost = 1.0 + self.beat_envelope * 0.5;
+            self.phase_x += bass * 0.1 * envelope_boost;
+            self.phase_y += mid * 0.1 * envelope_boost;
         }
 
-        // Drift to next ratio every ~4 seconds (240 frames at 60Hz)
+        // Drift to next ratio — beat can trigger immediate jump
         if !self.frozen {
             self.ratio_drift_timer += 1.0;
-            if self.ratio_drift_timer > 240.0 {
+            let should_advance = self.ratio_drift_timer > 240.0
+                || (self.beat_fired && self.ratio_drift_timer > 60.0);
+            if should_advance {
                 self.ratio_drift_timer = 0.0;
                 self.ratio_index = (self.ratio_index + 1) % RATIOS.len();
             }
@@ -130,7 +138,18 @@ impl Visualization for Lissajous {
             }
         }
 
-        canvas.render(&area, buf, self.color);
+        // Beat envelope brightens trail color
+        let draw_color = if let Color::Rgb(r, g, b) = self.color {
+            let boost = 0.5 + self.beat_envelope * 0.5;
+            Color::Rgb(
+                (r as f32 * boost) as u8,
+                (g as f32 * boost) as u8,
+                (b as f32 * boost) as u8,
+            )
+        } else {
+            self.color
+        };
+        canvas.render(&area, buf, draw_color);
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

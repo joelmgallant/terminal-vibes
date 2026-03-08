@@ -42,6 +42,8 @@ pub struct Starfield {
     density: usize,
     #[allow(dead_code)]
     color: Color,
+    beat_envelope: f32,
+    beat_fired: bool,
 }
 
 impl Starfield {
@@ -59,6 +61,8 @@ impl Starfield {
             frame_counter: 0,
             density: n,
             color: Color::White,
+            beat_envelope: 0.0,
+            beat_fired: false,
         }
     }
 }
@@ -72,13 +76,15 @@ impl Visualization for Starfield {
         self.prev_peak = self.peak;
         self.rms = frame.rms;
         self.peak = frame.peak;
+        self.beat_envelope = frame.beat.envelope;
+        self.beat_fired = frame.beat.beat;
         self.frame_counter = self.frame_counter.wrapping_add(1);
 
-        // Speed: quiet = gentle drift, loud = warp speed
-        let speed = 0.005 + self.rms * 0.03;
+        // Speed: quiet = gentle drift, loud = warp speed, beat = hyperspace
+        let speed = 0.005 + self.rms * 0.03 + self.beat_envelope * 0.02;
 
-        // Peak spike: spawn burst of particles at center
-        let peak_spike = self.peak > self.prev_peak + 0.1;
+        // Beat or peak spike: spawn burst of particles at center
+        let peak_spike = self.peak > self.prev_peak + 0.1 || self.beat_fired;
 
         for (i, particle) in self.particles.iter_mut().enumerate() {
             // Move toward viewer (decrease z)
@@ -130,8 +136,8 @@ impl Visualization for Starfield {
             }
         }
 
-        // Brightness based on RMS
-        let brightness = (128.0 + self.rms * 127.0) as u8;
+        // Brightness based on RMS + beat envelope
+        let brightness = (128.0 + self.rms * 80.0 + self.beat_envelope * 47.0) as u8;
         let color = Color::Rgb(brightness, brightness, brightness);
         canvas.render(&area, buf, color);
     }

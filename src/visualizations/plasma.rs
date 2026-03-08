@@ -1,6 +1,6 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::render::HalfBlockCanvas;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -15,6 +15,7 @@ pub struct Plasma {
     k4: f32,
     rms: f32,
     hue_offset: f32,
+    beat_envelope: f32,
 }
 
 impl Plasma {
@@ -27,6 +28,7 @@ impl Plasma {
             k4: 14.0,
             rms: 0.0,
             hue_offset: 0.0,
+            beat_envelope: 0.0,
         }
     }
 }
@@ -38,13 +40,15 @@ impl Visualization for Plasma {
 
     fn update(&mut self, frame: &FrameData) {
         self.rms = frame.rms;
+        self.beat_envelope = frame.beat.envelope;
 
         let band_count = frame.spectrum.len();
         if band_count >= 4 {
             let quarter = band_count / 4;
             let bass = frame.spectrum[..quarter].iter().sum::<f32>() / quarter as f32;
             let low_mid = frame.spectrum[quarter..quarter * 2].iter().sum::<f32>() / quarter as f32;
-            let high_mid = frame.spectrum[quarter * 2..quarter * 3].iter().sum::<f32>() / quarter as f32;
+            let high_mid =
+                frame.spectrum[quarter * 2..quarter * 3].iter().sum::<f32>() / quarter as f32;
             let treble = frame.spectrum[quarter * 3..].iter().sum::<f32>() / quarter as f32;
 
             // Bass stretches, treble tightens
@@ -54,9 +58,16 @@ impl Visualization for Plasma {
             self.k4 = 10.0 + treble * 8.0;
         }
 
-        // Peak boosts color saturation via hue rotation speed
-        self.hue_offset += 0.02 + frame.peak * 0.05;
-        self.time += 0.03 + self.rms * 0.05;
+        // Beat envelope boosts frequency density across all oscillators
+        let beat_boost = 1.0 + self.beat_envelope * 0.3;
+        self.k1 *= beat_boost;
+        self.k2 *= beat_boost;
+        self.k3 *= beat_boost;
+        self.k4 *= beat_boost;
+
+        // Peak + envelope boost hue rotation speed
+        self.hue_offset += 0.02 + frame.peak * 0.05 + self.beat_envelope * 0.03;
+        self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.02;
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {

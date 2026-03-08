@@ -7,6 +7,8 @@ use std::collections::VecDeque;
 
 pub struct Spectrogram {
     history: VecDeque<Vec<f32>>,
+    /// Track which frames had a beat for marker rendering
+    beat_markers: VecDeque<bool>,
     max_history: usize,
 }
 
@@ -14,6 +16,7 @@ impl Spectrogram {
     pub fn new(max_history: usize) -> Self {
         Self {
             history: VecDeque::with_capacity(max_history),
+            beat_markers: VecDeque::with_capacity(max_history),
             max_history,
         }
     }
@@ -26,8 +29,12 @@ impl Visualization for Spectrogram {
 
     fn update(&mut self, frame: &FrameData) {
         self.history.push_back(frame.spectrum.clone());
+        self.beat_markers.push_back(frame.beat.beat);
         while self.history.len() > self.max_history {
             self.history.pop_front();
+        }
+        while self.beat_markers.len() > self.max_history {
+            self.beat_markers.pop_front();
         }
     }
 
@@ -40,15 +47,19 @@ impl Visualization for Spectrogram {
         let rows = area.height as usize;
 
         // Show the most recent `cols` frames (time flows left to right)
-        let visible_history: Vec<&Vec<f32>> = self
+        let visible_entries: Vec<(&Vec<f32>, bool)> = self
             .history
             .iter()
+            .zip(self.beat_markers.iter())
             .rev()
             .take(cols)
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
+            .map(|(spec, &beat)| (spec, beat))
             .collect();
+        let visible_history: Vec<&Vec<f32>> = visible_entries.iter().map(|(s, _)| *s).collect();
+        let visible_beats: Vec<bool> = visible_entries.iter().map(|(_, b)| *b).collect();
 
         let x_offset = if visible_history.len() < cols {
             cols - visible_history.len()
@@ -73,10 +84,17 @@ impl Visualization for Spectrogram {
                 };
 
                 let y = area.y + row as u16;
-                let color = magma_colormap(intensity);
+                // Boost intensity on beat frames for a bright column marker
+                let is_beat = visible_beats.get(col_idx).copied().unwrap_or(false);
+                let display_intensity = if is_beat {
+                    (intensity + 0.3).clamp(0.0, 1.0)
+                } else {
+                    intensity
+                };
+                let color = magma_colormap(display_intensity);
 
                 buf[(x, y)]
-                    .set_char(intensity_char(intensity))
+                    .set_char(intensity_char(display_intensity))
                     .set_fg(color);
             }
         }
@@ -90,7 +108,10 @@ impl Visualization for Spectrogram {
 
     fn save_config(&self) -> toml::Value {
         let mut table = toml::value::Table::new();
-        table.insert("history_length".to_string(), toml::Value::Integer(self.max_history as i64));
+        table.insert(
+            "history_length".to_string(),
+            toml::Value::Integer(self.max_history as i64),
+        );
         toml::Value::Table(table)
     }
 }

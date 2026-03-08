@@ -7,6 +7,7 @@ use ratatui::style::Color;
 pub struct Waveform {
     samples: Vec<f32>,
     color: Color,
+    beat_envelope: f32,
 }
 
 impl Waveform {
@@ -14,6 +15,7 @@ impl Waveform {
         Self {
             samples: Vec::new(),
             color: Color::from_u32(0x0000ff88),
+            beat_envelope: 0.0,
         }
     }
 }
@@ -25,6 +27,7 @@ impl Visualization for Waveform {
 
     fn update(&mut self, frame: &FrameData) {
         self.samples = frame.waveform.clone();
+        self.beat_envelope = frame.beat.envelope;
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -33,6 +36,18 @@ impl Visualization for Waveform {
         }
 
         let mid_y = area.y + area.height / 2;
+
+        // Brighten color on beat envelope
+        let draw_color = if let Color::Rgb(r, g, b) = self.color {
+            let boost = 1.0 + self.beat_envelope * 0.8;
+            Color::Rgb(
+                ((r as f32 * boost) as u8).max(r),
+                ((g as f32 * boost) as u8).max(g),
+                ((b as f32 * boost) as u8).max(b),
+            )
+        } else {
+            self.color
+        };
 
         for x in 0..area.width {
             // Map terminal column to sample index
@@ -43,12 +58,11 @@ impl Visualization for Waveform {
             let half_h = area.height as f32 / 2.0;
             let y_offset = (-sample * half_h) as i16;
             let y = (mid_y as i16 + y_offset)
-                .clamp(area.y as i16, (area.y + area.height - 1) as i16)
-                as u16;
+                .clamp(area.y as i16, (area.y + area.height - 1) as i16) as u16;
 
             buf[(area.x + x, y)]
                 .set_char('\u{2022}') // bullet dot
-                .set_fg(self.color);
+                .set_fg(draw_color);
 
             // Draw a vertical line from mid to point for thickness
             let (y_start, y_end) = if y < mid_y { (y, mid_y) } else { (mid_y, y) };
@@ -56,13 +70,11 @@ impl Visualization for Waveform {
                 if fill_y >= area.y && fill_y < area.y + area.height {
                     buf[(area.x + x, fill_y)]
                         .set_char('\u{2502}') // thin vertical line
-                        .set_fg(self.color);
+                        .set_fg(draw_color);
                 }
             }
             // Overwrite the point itself with a solid dot
-            buf[(area.x + x, y)]
-                .set_char('\u{2022}')
-                .set_fg(self.color);
+            buf[(area.x + x, y)].set_char('\u{2022}').set_fg(draw_color);
         }
     }
 
@@ -77,7 +89,10 @@ impl Visualization for Waveform {
     fn save_config(&self) -> toml::Value {
         let mut table = toml::value::Table::new();
         if let Color::Rgb(r, g, b) = self.color {
-            table.insert("color".to_string(), toml::Value::String(format!("#{:02x}{:02x}{:02x}", r, g, b)));
+            table.insert(
+                "color".to_string(),
+                toml::Value::String(format!("#{:02x}{:02x}{:02x}", r, g, b)),
+            );
         }
         toml::Value::Table(table)
     }

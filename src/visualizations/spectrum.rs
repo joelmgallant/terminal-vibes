@@ -93,6 +93,7 @@ pub struct SpectrumBars {
     palette: ColorPalette,
     cycling: bool,
     phase: f32,
+    beat_envelope: f32,
 }
 
 impl SpectrumBars {
@@ -104,6 +105,7 @@ impl SpectrumBars {
             palette: ColorPalette::Neon,
             cycling: false,
             phase: 0.0,
+            beat_envelope: 0.0,
         }
     }
 }
@@ -115,8 +117,11 @@ impl Visualization for SpectrumBars {
 
     fn update(&mut self, frame: &FrameData) {
         self.spectrum = frame.spectrum.clone();
+        self.beat_envelope = frame.beat.envelope;
         if self.cycling {
-            self.phase = (self.phase + 0.005) % 1.0;
+            // Color cycling accelerates with beat envelope
+            let cycle_speed = 0.005 + self.beat_envelope * 0.015;
+            self.phase = (self.phase + cycle_speed) % 1.0;
         }
     }
 
@@ -147,7 +152,8 @@ impl Visualization for SpectrumBars {
             } else {
                 self.spectrum[idx.min(band_count - 1)]
             };
-            let value = value.clamp(0.0, 1.0);
+            // Beat envelope gives bars a subtle height boost
+            let value = (value * (1.0 + self.beat_envelope * 0.3)).clamp(0.0, 1.0);
 
             let x = area.x + (i as u16) * bar_step;
             let color_t = if self.cycling {

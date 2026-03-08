@@ -25,6 +25,8 @@ pub struct Rain {
     thick: bool,
     palette: ColorPalette,
     frame_counter: u32,
+    beat_envelope: f32,
+    beat_fired: bool,
 }
 
 impl Rain {
@@ -37,6 +39,8 @@ impl Rain {
             thick: false,
             palette: ColorPalette::Matrix,
             frame_counter: 0,
+            beat_envelope: 0.0,
+            beat_fired: false,
         }
     }
 
@@ -69,6 +73,8 @@ impl Visualization for Rain {
         self.rms = frame.rms;
         self.peak = frame.peak;
         self.spectrum = frame.spectrum.clone();
+        self.beat_envelope = frame.beat.envelope;
+        self.beat_fired = frame.beat.beat;
         self.frame_counter = self.frame_counter.wrapping_add(1);
 
         // Ensure at least some columns exist (render will clip to area width)
@@ -76,7 +82,8 @@ impl Visualization for Rain {
             self.ensure_columns(200);
         }
 
-        let global_speed = 0.3 + self.rms * 0.7;
+        // Beat envelope surges drop speed
+        let global_speed = 0.3 + self.rms * 0.7 + self.beat_envelope * 0.5;
         let num_cols = self.columns.len();
 
         for (col_idx, column) in self.columns.iter_mut().enumerate() {
@@ -98,6 +105,18 @@ impl Visualization for Rain {
 
             column.spawn_timer += energy * 0.5 + 0.05;
             let spawn_threshold = 1.5 - energy * 0.8;
+
+            // Beat storm: force-spawn drops across all columns on beat
+            if self.beat_fired && column.drops.len() < 8 {
+                let seed = self.frame_counter.wrapping_add(col_idx as u32 * 17);
+                let speed_var = ((seed.wrapping_mul(1103515245) >> 16) as f32 / 65536.0) * 0.3;
+                column.drops.push(Drop {
+                    y: 0.0,
+                    speed: 0.6 + speed_var,
+                    length: 6 + (energy * 8.0) as u16,
+                    brightness: 1.0,
+                });
+            }
 
             if column.spawn_timer >= spawn_threshold && column.drops.len() < 8 {
                 column.spawn_timer = 0.0;

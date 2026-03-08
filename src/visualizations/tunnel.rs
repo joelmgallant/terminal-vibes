@@ -47,6 +47,8 @@ pub struct Tunnel {
     bass: f32,
     treble: f32,
     spawn_timer: f32,
+    beat_envelope: f32,
+    beat_fired: bool,
 }
 
 impl Tunnel {
@@ -60,6 +62,8 @@ impl Tunnel {
             bass: 0.0,
             treble: 0.0,
             spawn_timer: 0.0,
+            beat_envelope: 0.0,
+            beat_fired: false,
         }
     }
 
@@ -90,6 +94,8 @@ impl Visualization for Tunnel {
 
     fn update(&mut self, frame: &FrameData) {
         self.rms = frame.rms;
+        self.beat_envelope = frame.beat.envelope;
+        self.beat_fired = frame.beat.beat;
         let band_count = frame.spectrum.len();
         if band_count > 0 {
             self.bass =
@@ -98,8 +104,8 @@ impl Visualization for Tunnel {
                 frame.spectrum[3 * band_count / 4..].iter().sum::<f32>() / (band_count / 4) as f32;
         }
 
-        // Expand existing rings
-        let speed = 0.01 + self.rms * 0.03;
+        // Expand existing rings — envelope accelerates expansion
+        let speed = 0.01 + self.rms * 0.03 + self.beat_envelope * 0.02;
         for ring in &mut self.rings {
             ring.radius += speed;
         }
@@ -116,6 +122,16 @@ impl Visualization for Tunnel {
                 radius: 0.01,
                 color_t: self.treble.clamp(0.0, 1.0),
             });
+        }
+
+        // Burst of extra rings on beat
+        if self.beat_fired {
+            for i in 0..3 {
+                self.rings.push(Ring {
+                    radius: 0.01 + i as f32 * 0.02,
+                    color_t: (self.treble + i as f32 * 0.1).clamp(0.0, 1.0),
+                });
+            }
         }
 
         self.time += 0.016;
@@ -136,8 +152,8 @@ impl Visualization for Tunnel {
         // Draw rings from farthest to nearest (painter's algorithm)
         for ring in &self.rings {
             let r = ring.radius * max_radius;
-            // Brightness fades with distance
-            let brightness = (1.0 - ring.radius).clamp(0.0, 1.0);
+            // Brightness fades with distance, boosted by beat envelope
+            let brightness = ((1.0 - ring.radius) * (1.0 + self.beat_envelope * 0.5)).clamp(0.0, 1.0);
             let color = self.palette.color(ring.color_t);
 
             // Dim the color based on distance

@@ -1,6 +1,6 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::render::HalfBlockCanvas;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -26,6 +26,7 @@ pub struct Aurora {
     peak: f32,
     band_energies: Vec<f32>,
     num_layers: usize,
+    beat_envelope: f32,
 }
 
 impl Aurora {
@@ -37,15 +38,16 @@ impl Aurora {
             peak: 0.0,
             band_energies: Vec::new(),
             num_layers: 3,
+            beat_envelope: 0.0,
         }
     }
 
     fn make_curtains(n: usize) -> Vec<Curtain> {
         let configs: Vec<(f32, f32, f32, f32, (u8, u8, u8))> = vec![
-            (0.7, 2.0, 0.3, 0.4, (0, 200, 100)),   // green, low
-            (0.5, 3.0, 0.5, 0.3, (0, 150, 255)),    // blue, mid
-            (0.3, 4.5, 0.7, 0.2, (180, 0, 255)),    // purple, high
-            (0.4, 3.5, 0.4, 0.25, (0, 255, 200)),   // cyan, mid-high
+            (0.7, 2.0, 0.3, 0.4, (0, 200, 100)),  // green, low
+            (0.5, 3.0, 0.5, 0.3, (0, 150, 255)),  // blue, mid
+            (0.3, 4.5, 0.7, 0.2, (180, 0, 255)),  // purple, high
+            (0.4, 3.5, 0.4, 0.25, (0, 255, 200)), // cyan, mid-high
         ];
         configs[..n.min(configs.len())]
             .iter()
@@ -68,6 +70,7 @@ impl Visualization for Aurora {
     fn update(&mut self, frame: &FrameData) {
         self.rms = frame.rms;
         self.peak = frame.peak;
+        self.beat_envelope = frame.beat.envelope;
 
         // Split spectrum into per-curtain band energies
         let n = self.curtains.len();
@@ -77,9 +80,12 @@ impl Visualization for Aurora {
             let chunk = band_count / n;
             for i in 0..n {
                 let start = i * chunk;
-                let end = if i == n - 1 { band_count } else { (i + 1) * chunk };
-                let energy = frame.spectrum[start..end].iter().sum::<f32>()
-                    / (end - start) as f32;
+                let end = if i == n - 1 {
+                    band_count
+                } else {
+                    (i + 1) * chunk
+                };
+                let energy = frame.spectrum[start..end].iter().sum::<f32>() / (end - start) as f32;
                 self.band_energies.push(energy);
             }
         }
@@ -109,10 +115,11 @@ impl Visualization for Aurora {
                 // Curtain center oscillates with sine wave
                 let wave = (x * curtain.freq * PI + self.time * curtain.speed).sin();
                 let center = curtain.base_y + wave * 0.1;
-                let height = curtain.height * (0.5 + energy);
+                // Beat envelope swells curtain height
+                let height = curtain.height * (0.5 + energy + self.beat_envelope * 0.3);
 
-                // Brightness flash on peak
-                let brightness = 0.6 + energy * 0.3 + self.peak * 0.1;
+                // Brightness flash on peak, boosted by beat envelope
+                let brightness = 0.6 + energy * 0.3 + self.peak * 0.1 + self.beat_envelope * 0.2;
 
                 for py in 0..ph {
                     let y = py as f32 / ph as f32;
@@ -133,11 +140,8 @@ impl Visualization for Aurora {
             // Write blended colors to canvas
             for (py, &(r, g, b)) in column_colors.iter().enumerate() {
                 if r > 1.0 || g > 1.0 || b > 1.0 {
-                    let color = Color::Rgb(
-                        (r as u8).min(255),
-                        (g as u8).min(255),
-                        (b as u8).min(255),
-                    );
+                    let color =
+                        Color::Rgb((r as u8).min(255), (g as u8).min(255), (b as u8).min(255));
                     canvas.set(px, py, color);
                 }
             }

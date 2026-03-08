@@ -1,7 +1,7 @@
 use crate::processing::FrameData;
-use crate::visualizations::Visualization;
 use crate::visualizations::render::HalfBlockCanvas;
 use crate::visualizations::spectrum::ColorPalette;
+use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use std::f32::consts::PI;
@@ -12,6 +12,7 @@ pub struct RadialSpectrum {
     rms: f32,
     mirror: bool,
     palette: ColorPalette,
+    beat_envelope: f32,
 }
 
 impl RadialSpectrum {
@@ -22,6 +23,7 @@ impl RadialSpectrum {
             rms: 0.0,
             mirror: false,
             palette: ColorPalette::Neon,
+            beat_envelope: 0.0,
         }
     }
 }
@@ -34,7 +36,9 @@ impl Visualization for RadialSpectrum {
     fn update(&mut self, frame: &FrameData) {
         self.spectrum = frame.spectrum.clone();
         self.rms = frame.rms;
-        self.rotation += 0.005 + self.rms * 0.02;
+        self.beat_envelope = frame.beat.envelope;
+        // Beat envelope accelerates rotation
+        self.rotation += 0.005 + self.rms * 0.02 + self.beat_envelope * 0.015;
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -54,7 +58,18 @@ impl Visualization for RadialSpectrum {
         for (i, &magnitude) in self.spectrum.iter().enumerate() {
             let t = i as f32 / num_rays as f32;
             let angle = self.rotation + t * 2.0 * PI;
-            let color = self.palette.color(t);
+            let base_color = self.palette.color(t);
+            // Beat envelope brightens ray colors
+            let color = if let ratatui::style::Color::Rgb(r, g, b) = base_color {
+                let boost = 1.0 + self.beat_envelope * 0.5;
+                ratatui::style::Color::Rgb(
+                    ((r as f32 * boost) as u8).max(r),
+                    ((g as f32 * boost) as u8).max(g),
+                    ((b as f32 * boost) as u8).max(b),
+                )
+            } else {
+                base_color
+            };
 
             let ray_len = magnitude * max_len;
             let steps = ray_len as usize;
@@ -85,14 +100,20 @@ impl Visualization for RadialSpectrum {
             }
             crossterm::event::KeyCode::Char('p') => {
                 let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
-                let idx = names.iter().position(|n| *n == self.palette.name()).unwrap_or(0);
-                self.palette = ColorPalette::from_name(names[(idx + 1) % names.len()])
-                    .unwrap_or(self.palette);
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
+                self.palette =
+                    ColorPalette::from_name(names[(idx + 1) % names.len()]).unwrap_or(self.palette);
                 true
             }
             crossterm::event::KeyCode::Char('P') => {
                 let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
-                let idx = names.iter().position(|n| *n == self.palette.name()).unwrap_or(0);
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
                 let prev = if idx == 0 { names.len() - 1 } else { idx - 1 };
                 self.palette = ColorPalette::from_name(names[prev]).unwrap_or(self.palette);
                 true
