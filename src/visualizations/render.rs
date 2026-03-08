@@ -92,3 +92,76 @@ pub fn smoothstep(t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
+
+/// A 2D color canvas at 2x vertical resolution using half-block characters.
+/// Each terminal cell encodes two vertical "pixels" via fg/bg color.
+/// Upper pixel uses foreground color with ▀, lower uses background color.
+pub struct HalfBlockCanvas {
+    cols: u16,
+    rows: u16,
+    /// Color per pixel: pixel_width * pixel_height, None = unset
+    pixels: Vec<Option<Color>>,
+}
+
+impl HalfBlockCanvas {
+    pub fn new(cols: u16, rows: u16) -> Self {
+        let pw = cols as usize;
+        let ph = rows as usize * 2;
+        Self {
+            cols,
+            rows,
+            pixels: vec![None; pw * ph],
+        }
+    }
+
+    pub fn pixel_width(&self) -> usize {
+        self.cols as usize
+    }
+
+    pub fn pixel_height(&self) -> usize {
+        self.rows as usize * 2
+    }
+
+    pub fn set(&mut self, x: usize, y: usize, color: Color) {
+        let pw = self.pixel_width();
+        let ph = self.pixel_height();
+        if x < pw && y < ph {
+            self.pixels[y * pw + x] = Some(color);
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.pixels.fill(None);
+    }
+
+    /// Render the color buffer into a ratatui Buffer using half-block characters.
+    pub fn render(&self, area: &Rect, buf: &mut Buffer) {
+        let render_cols = self.cols.min(area.width);
+        let render_rows = self.rows.min(area.height);
+
+        for cy in 0..render_rows {
+            for cx in 0..render_cols {
+                let top_idx = (cy as usize * 2) * self.pixel_width() + cx as usize;
+                let bot_idx = (cy as usize * 2 + 1) * self.pixel_width() + cx as usize;
+                let top = self.pixels[top_idx];
+                let bot = self.pixels[bot_idx];
+
+                let cell = &mut buf[(area.x + cx, area.y + cy)];
+                match (top, bot) {
+                    (Some(tc), Some(bc)) => {
+                        cell.set_char('\u{2580}').set_fg(tc).set_bg(bc);
+                    }
+                    (Some(tc), None) => {
+                        cell.set_char('\u{2580}').set_fg(tc);
+                    }
+                    (None, Some(bc)) => {
+                        cell.set_char('\u{2584}').set_fg(bc);
+                    }
+                    (None, None) => {
+                        cell.set_char(' ');
+                    }
+                }
+            }
+        }
+    }
+}

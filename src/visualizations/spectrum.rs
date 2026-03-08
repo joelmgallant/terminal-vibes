@@ -21,7 +21,7 @@ pub enum ColorPalette {
 }
 
 impl ColorPalette {
-    const ALL: &[ColorPalette] = &[
+    pub const ALL: &[ColorPalette] = &[
         ColorPalette::Neon,
         ColorPalette::Fire,
         ColorPalette::Ocean,

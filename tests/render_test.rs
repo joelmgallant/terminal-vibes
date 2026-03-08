@@ -1,4 +1,4 @@
-use terminal_vibes::visualizations::render::BrailleCanvas;
+use terminal_vibes::visualizations::render::{BrailleCanvas, HalfBlockCanvas};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -59,4 +59,59 @@ fn test_braille_canvas_clear() {
     canvas.render(&area, &mut buf, Color::White);
     let ch = buf[(0u16, 0u16)].symbol().chars().next().unwrap();
     assert!(ch == '\u{2800}' || ch == ' ');
+}
+
+#[test]
+fn test_half_block_canvas_dimensions() {
+    let canvas = HalfBlockCanvas::new(40, 12);
+    assert_eq!(canvas.pixel_width(), 40);
+    assert_eq!(canvas.pixel_height(), 24); // 12 rows * 2
+}
+
+#[test]
+fn test_half_block_canvas_set_and_render() {
+    let mut canvas = HalfBlockCanvas::new(4, 2);
+    canvas.set(0, 0, Color::Red);   // top pixel of cell (0,0)
+    canvas.set(0, 1, Color::Blue);  // bottom pixel of cell (0,0)
+    let area = Rect::new(0, 0, 4, 2);
+    let mut buf = Buffer::empty(area);
+    canvas.render(&area, &mut buf);
+    // Cell (0,0) should have fg=Red (upper), bg=Blue (lower), char=▀
+    let cell = &buf[(0u16, 0u16)];
+    assert_eq!(cell.symbol(), "\u{2580}");
+}
+
+#[test]
+fn test_half_block_canvas_clear() {
+    let mut canvas = HalfBlockCanvas::new(4, 2);
+    canvas.set(0, 0, Color::Red);
+    canvas.clear();
+    let area = Rect::new(0, 0, 4, 2);
+    let mut buf = Buffer::empty(area);
+    canvas.render(&area, &mut buf);
+    // After clear, cell should have default (no color set)
+    let cell = &buf[(0u16, 0u16)];
+    assert_eq!(cell.symbol(), " ");
+}
+
+#[test]
+fn test_half_block_canvas_only_top_pixel() {
+    let mut canvas = HalfBlockCanvas::new(4, 2);
+    canvas.set(0, 0, Color::Green); // only top pixel
+    let area = Rect::new(0, 0, 4, 2);
+    let mut buf = Buffer::empty(area);
+    canvas.render(&area, &mut buf);
+    let cell = &buf[(0u16, 0u16)];
+    assert_eq!(cell.symbol(), "\u{2580}");
+}
+
+#[test]
+fn test_half_block_canvas_only_bottom_pixel() {
+    let mut canvas = HalfBlockCanvas::new(4, 2);
+    canvas.set(0, 1, Color::Green); // only bottom pixel
+    let area = Rect::new(0, 0, 4, 2);
+    let mut buf = Buffer::empty(area);
+    canvas.render(&area, &mut buf);
+    let cell = &buf[(0u16, 0u16)];
+    assert_eq!(cell.symbol(), "\u{2584}");
 }
