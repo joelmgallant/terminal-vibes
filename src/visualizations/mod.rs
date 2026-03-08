@@ -1,3 +1,4 @@
+pub mod lissajous;
 pub mod registry;
 pub mod render;
 pub mod spectrogram;
