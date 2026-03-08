@@ -1,25 +1,8 @@
+use crate::beat::BeatData;
 use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::f32::consts::PI;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, Default)]
-pub struct BeatData {
-    /// Per-band beat detected this frame
-    pub bass_beat: bool,
-    pub mid_beat: bool,
-    pub treble_beat: bool,
-
-    /// Per-band pulse envelopes (0.0..1.0, fast attack / configurable decay)
-    pub bass_pulse: f32,
-    pub mid_pulse: f32,
-    pub treble_pulse: f32,
-
-    /// Per-band energy levels (0.0..1.0, pre-threshold continuous values)
-    pub bass_energy: f32,
-    pub mid_energy: f32,
-    pub treble_energy: f32,
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct FrameData {
@@ -81,12 +64,7 @@ impl Processor {
         let peak = samples[..n]
             .iter()
             .fold(0.0_f32, |acc, &s| acc.max(s.abs()));
-        let rms = (samples[..n]
-            .iter()
-            .map(|s| s * s)
-            .sum::<f32>()
-            / n as f32)
-            .sqrt();
+        let rms = (samples[..n].iter().map(|s| s * s).sum::<f32>() / n as f32).sqrt();
 
         // Apply window into pre-allocated FFT buffer
         for (i, (&s, &w)) in samples[..n].iter().zip(self.window.iter()).enumerate() {
@@ -107,7 +85,11 @@ impl Processor {
         }
 
         // Bin into logarithmic frequency bands (writes into pre-allocated slice)
-        bin_to_bands_into(&self.magnitudes, &mut self.spectrum_buf, self.config.db_floor);
+        bin_to_bands_into(
+            &self.magnitudes,
+            &mut self.spectrum_buf,
+            self.config.db_floor,
+        );
 
         // Apply smoothing
         for (i, val) in self.spectrum_buf.iter().enumerate() {

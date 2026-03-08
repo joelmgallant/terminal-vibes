@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Split};
+use ringbuf::HeapRb;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -10,6 +10,7 @@ use std::thread;
 use std::time::Duration;
 
 mod audio;
+mod beat;
 mod config;
 mod processing;
 mod ui;
@@ -48,8 +49,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let config = Config::load(cli.config.as_ref())
-        .context("Failed to load config")?;
+    let config = Config::load(cli.config.as_ref()).context("Failed to load config")?;
 
     // Set up ring buffer
     let rb = HeapRb::<f32>::new(config.audio.buffer_size);
@@ -60,11 +60,10 @@ fn main() -> Result<()> {
         sample_rate: 44100.0,
         channels: 2,
     };
-    let _audio_tap = AudioTap::new(producer, audio_config.clone())
-        .context(
-            "Failed to start audio capture. \
-             Make sure you're on macOS 15+ and have granted audio permissions."
-        )?;
+    let _audio_tap = AudioTap::new(producer, audio_config.clone()).context(
+        "Failed to start audio capture. \
+             Make sure you're on macOS 15+ and have granted audio permissions.",
+    )?;
 
     // Set up visualization registry
     let mut registry = VisualizationRegistry::new();
