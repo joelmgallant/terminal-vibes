@@ -1,4 +1,5 @@
 pub mod registry;
+pub mod spectrogram;
 pub mod spectrum;
 pub mod waveform;
 
