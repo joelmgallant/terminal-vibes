@@ -76,6 +76,13 @@ pub struct BeatDetectionConfig {
     pub flux_sensitivity: f32,
     pub flux_history_frames: usize,
     pub energy_floor: f32,
+    pub tempo_buffer_frames: usize,
+    pub tempo_update_interval: usize,
+    pub tempo_min_bpm: f32,
+    pub tempo_max_bpm: f32,
+    pub tempo_confidence_threshold: f32,
+    pub tempo_hysteresis_decay: f32,
+    pub prediction_strength: f32,
 }
 
 impl Default for BeatDetectionConfig {
@@ -86,6 +93,13 @@ impl Default for BeatDetectionConfig {
             flux_sensitivity: 3.0,
             flux_history_frames: 30,
             energy_floor: 0.001,
+            tempo_buffer_frames: 240,
+            tempo_update_interval: 15,
+            tempo_min_bpm: 60.0,
+            tempo_max_bpm: 200.0,
+            tempo_confidence_threshold: 0.3,
+            tempo_hysteresis_decay: 0.98,
+            prediction_strength: 0.2,
         }
     }
 }
