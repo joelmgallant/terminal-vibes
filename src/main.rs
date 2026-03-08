@@ -20,9 +20,16 @@ use audio::{AudioConfig, AudioTap};
 use config::Config;
 use processing::{FrameData, Processor, ProcessorConfig};
 use ui::App;
+use visualizations::aurora::Aurora;
+use visualizations::lissajous::Lissajous;
+use visualizations::plasma::Plasma;
+use visualizations::radial::RadialSpectrum;
+use visualizations::rain::Rain;
 use visualizations::registry::VisualizationRegistry;
 use visualizations::spectrogram::Spectrogram;
 use visualizations::spectrum::SpectrumBars;
+use visualizations::starfield::Starfield;
+use visualizations::tunnel::Tunnel;
 use visualizations::waveform::Waveform;
 
 #[derive(Parser)]
@@ -46,6 +53,13 @@ fn main() -> Result<()> {
         println!("  spectrum    - Frequency spectrum bars");
         println!("  waveform    - Oscilloscope waveform");
         println!("  spectrogram - Scrolling frequency heatmap");
+        println!("  lissajous   - Parametric curve spirograph");
+        println!("  tunnel      - Concentric rings rushing forward");
+        println!("  radial      - Circular spectrum starburst");
+        println!("  plasma      - Sine interference color field");
+        println!("  aurora      - Northern lights curtains");
+        println!("  starfield   - 3D particle warp drive");
+        println!("  rain        - Music-reactive falling streams");
         return Ok(());
     }
 
@@ -70,6 +84,13 @@ fn main() -> Result<()> {
     registry.register(Box::new(SpectrumBars::new()));
     registry.register(Box::new(Waveform::new()));
     registry.register(Box::new(Spectrogram::new(200)));
+    registry.register(Box::new(Lissajous::new()));
+    registry.register(Box::new(Tunnel::new()));
+    registry.register(Box::new(RadialSpectrum::new()));
+    registry.register(Box::new(Plasma::new()));
+    registry.register(Box::new(Aurora::new()));
+    registry.register(Box::new(Starfield::new()));
+    registry.register(Box::new(Rain::new()));
 
     // Set up processing -> UI channel
     let (frame_tx, frame_rx) = mpsc::sync_channel::<FrameData>(2);
