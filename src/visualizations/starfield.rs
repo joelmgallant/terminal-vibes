@@ -11,24 +11,34 @@ struct Particle {
     z: f32,
 }
 
+/// Integer hash for pseudo-random particle placement.
+/// The previous LCG approach (seed * multiplier + offset) didn't wrap for small
+/// seeds, causing all y-values to cluster near -1.0 (stars flew "overhead").
+fn hash_u32(mut x: u32) -> u32 {
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x45d9f3b);
+    x ^= x >> 16;
+    x = x.wrapping_mul(0x45d9f3b);
+    x ^= x >> 16;
+    x
+}
+
+fn hash_f32(seed: u32, channel: u32) -> f32 {
+    hash_u32(seed.wrapping_add(channel.wrapping_mul(0x9E3779B9))) as f32 / u32::MAX as f32
+}
+
 impl Particle {
     fn new_random(seed: u32) -> Self {
-        // Simple deterministic pseudo-random using seed
-        let s1 = ((seed.wrapping_mul(1103515245).wrapping_add(12345)) as f32) / u32::MAX as f32;
-        let s2 = ((seed.wrapping_mul(214013).wrapping_add(2531011)) as f32) / u32::MAX as f32;
-        let s3 = ((seed.wrapping_mul(1664525).wrapping_add(1013904223)) as f32) / u32::MAX as f32;
         Self {
-            x: (s1 - 0.5) * 2.0, // -1..1
-            y: (s2 - 0.5) * 2.0, // -1..1
-            z: s3 * 0.8 + 0.2,   // 0.2..1.0 (avoid z=0 division)
+            x: (hash_f32(seed, 0) - 0.5) * 2.0, // -1..1
+            y: (hash_f32(seed, 1) - 0.5) * 2.0, // -1..1
+            z: hash_f32(seed, 2) * 0.8 + 0.2,   // 0.2..1.0 (avoid z=0 division)
         }
     }
 
     fn reset_to_center(&mut self, seed: u32) {
-        let s1 = ((seed.wrapping_mul(1103515245).wrapping_add(12345)) as f32) / u32::MAX as f32;
-        let s2 = ((seed.wrapping_mul(214013).wrapping_add(2531011)) as f32) / u32::MAX as f32;
-        self.x = (s1 - 0.5) * 0.2; // small spread near center
-        self.y = (s2 - 0.5) * 0.2;
+        self.x = (hash_f32(seed, 0) - 0.5) * 0.2; // small spread near center
+        self.y = (hash_f32(seed, 1) - 0.5) * 0.2;
         self.z = 1.0; // start far away
     }
 }
@@ -115,10 +125,14 @@ impl Visualization for Starfield {
         let cx = pw / 2.0;
         let cy = ph / 2.0;
 
+        // Use uniform focal length so stars radiate symmetrically from center.
+        // Different focal lengths (cx vs cy) would distort the radial motion.
+        let focal = cx.min(cy);
+
         for particle in &self.particles {
             // Perspective projection
-            let screen_x = cx + (particle.x / particle.z) * cx;
-            let screen_y = cy + (particle.y / particle.z) * cy;
+            let screen_x = cx + (particle.x / particle.z) * focal;
+            let screen_y = cy + (particle.y / particle.z) * focal;
 
             let px = screen_x as usize;
             let py = screen_y as usize;
