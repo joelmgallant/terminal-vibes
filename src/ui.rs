@@ -21,6 +21,7 @@ pub struct App {
     config: Config,
     running: Arc<AtomicBool>,
     sensitivity: f32,
+    beat_intensity: f32,
 }
 
 impl App {
@@ -30,6 +31,7 @@ impl App {
         running: Arc<AtomicBool>,
     ) -> Self {
         let mut sensitivity = 1.0_f32;
+        let mut beat_intensity = 1.0_f32;
         // Restore saved state
         if let Some(state) = Self::load_state() {
             if let Some(viz_name) = state.get("current_visualization").and_then(|v| v.as_str()) {
@@ -37,6 +39,9 @@ impl App {
             }
             if let Some(s) = state.get("sensitivity").and_then(|v| v.as_float()) {
                 sensitivity = s as f32;
+            }
+            if let Some(b) = state.get("beat_intensity").and_then(|v| v.as_float()) {
+                beat_intensity = b as f32;
             }
             if let Some(viz_table) = state.get("visualizations").and_then(|v| v.as_table()) {
                 registry.load_all(viz_table);
@@ -47,6 +52,7 @@ impl App {
             config,
             running,
             sensitivity,
+            beat_intensity,
         }
     }
 
@@ -73,6 +79,16 @@ impl App {
                 *val = (*val * self.sensitivity).clamp(0.0, 1.0);
             }
 
+            // Scale beat data by beat intensity
+            let bi = self.beat_intensity;
+            display_frame.beat.envelope = (display_frame.beat.envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.bass_envelope = (display_frame.beat.bass_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.mid_envelope = (display_frame.beat.mid_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.treble_envelope = (display_frame.beat.treble_envelope * bi).clamp(0.0, 1.0);
+            display_frame.beat.bass_energy = (display_frame.beat.bass_energy * bi).clamp(0.0, 1.0);
+            display_frame.beat.mid_energy = (display_frame.beat.mid_energy * bi).clamp(0.0, 1.0);
+            display_frame.beat.treble_energy = (display_frame.beat.treble_energy * bi).clamp(0.0, 1.0);
+
             self.registry.update_current(&display_frame);
 
             terminal.draw(|f| {
@@ -92,9 +108,15 @@ impl App {
                 // Status bar
                 if self.config.display.show_status_bar && chunks.len() > 1 {
                     let mode_name = self.registry.current().map(|v| v.name()).unwrap_or("none");
+                    let beat_indicator = if display_frame.beat.beat {
+                        "BEAT!"
+                    } else {
+                        "     "
+                    };
                     let status = format!(
-                        " [{}]  peak: {:.2}  rms: {:.2}  sens: {:.1}x  |  Tab: next  q: quit ",
-                        mode_name, display_frame.peak, display_frame.rms, self.sensitivity,
+                        " [{}]  peak: {:.2}  rms: {:.2}  env: {:.2}  {}  sens: {:.1}x  beat: {:.1}x  |  Tab: next  q: quit ",
+                        mode_name, display_frame.peak, display_frame.rms,
+                        display_frame.beat.envelope, beat_indicator, self.sensitivity, self.beat_intensity,
                     );
                     let status_bar = Paragraph::new(status)
                         .style(Style::default().fg(Color::White).bg(Color::DarkGray));
@@ -148,6 +170,14 @@ impl App {
                 self.sensitivity = (self.sensitivity - 0.1).max(0.1);
                 true
             }
+            KeyCode::Char('b') => {
+                self.beat_intensity = (self.beat_intensity + 0.1).min(3.0);
+                true
+            }
+            KeyCode::Char('B') => {
+                self.beat_intensity = (self.beat_intensity - 0.1).max(0.0);
+                true
+            }
             KeyCode::Char('s') => {
                 self.config.display.show_status_bar = !self.config.display.show_status_bar;
                 true
@@ -177,6 +207,10 @@ impl App {
         root.insert(
             "sensitivity".to_string(),
             toml::Value::Float(self.sensitivity as f64),
+        );
+        root.insert(
+            "beat_intensity".to_string(),
+            toml::Value::Float(self.beat_intensity as f64),
         );
 
         let viz_states = self.registry.save_all();

@@ -37,8 +37,8 @@ impl Visualization for RadialSpectrum {
         self.spectrum = frame.spectrum.clone();
         self.rms = frame.rms;
         self.beat_envelope = frame.beat.envelope;
-        // Beat envelope accelerates rotation
-        self.rotation += 0.005 + self.rms * 0.02 + self.beat_envelope * 0.015;
+        // Beat envelope spins it hard
+        self.rotation += 0.005 + self.rms * 0.02 + self.beat_envelope * 0.05;
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {
@@ -59,19 +59,20 @@ impl Visualization for RadialSpectrum {
             let t = i as f32 / num_rays as f32;
             let angle = self.rotation + t * 2.0 * PI;
             let base_color = self.palette.color(t);
-            // Beat envelope brightens ray colors
+            // Beat envelope drives brightness: dim when quiet, vivid on beat
             let color = if let ratatui::style::Color::Rgb(r, g, b) = base_color {
-                let boost = 1.0 + self.beat_envelope * 0.5;
+                let brightness = 0.3 + self.beat_envelope * 0.7;
                 ratatui::style::Color::Rgb(
-                    ((r as f32 * boost) as u8).max(r),
-                    ((g as f32 * boost) as u8).max(g),
-                    ((b as f32 * boost) as u8).max(b),
+                    (r as f32 * brightness) as u8,
+                    (g as f32 * brightness) as u8,
+                    (b as f32 * brightness) as u8,
                 )
             } else {
                 base_color
             };
 
-            let ray_len = magnitude * max_len;
+            // Rays extend further on beat
+            let ray_len = magnitude * max_len * (1.0 + self.beat_envelope * 0.4);
             let steps = ray_len as usize;
 
             for s in 0..=steps {

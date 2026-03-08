@@ -80,8 +80,8 @@ impl Visualization for Starfield {
         self.beat_fired = frame.beat.beat;
         self.frame_counter = self.frame_counter.wrapping_add(1);
 
-        // Speed: quiet = gentle drift, loud = warp speed, beat = hyperspace
-        let speed = 0.005 + self.rms * 0.03 + self.beat_envelope * 0.02;
+        // Speed: quiet = gentle drift, loud = warp speed, beat = HYPERSPACE
+        let speed = 0.005 + self.rms * 0.03 + self.beat_envelope * 0.06;
 
         // Beat or peak spike: spawn burst of particles at center
         let peak_spike = self.peak > self.prev_peak + 0.1 || self.beat_fired;
@@ -95,8 +95,8 @@ impl Visualization for Starfield {
                 particle.reset_to_center(self.frame_counter.wrapping_add(i as u32));
             }
 
-            // Peak burst: reset some particles to center
-            if peak_spike && i % 8 == 0 {
+            // Peak/beat burst: reset particles to center for warp effect
+            if peak_spike && i % 4 == 0 {
                 particle.reset_to_center(self.frame_counter.wrapping_add(i as u32 * 7));
             }
         }
@@ -136,8 +136,8 @@ impl Visualization for Starfield {
             }
         }
 
-        // Brightness based on RMS + beat envelope
-        let brightness = (128.0 + self.rms * 80.0 + self.beat_envelope * 47.0) as u8;
+        // Brightness pulses with beat — dim drift, bright burst
+        let brightness = (80.0 + self.rms * 50.0 + self.beat_envelope * 125.0) as u8;
         let color = Color::Rgb(brightness, brightness, brightness);
         canvas.render(&area, buf, color);
     }

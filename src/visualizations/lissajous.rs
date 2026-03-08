@@ -78,7 +78,7 @@ impl Visualization for Lissajous {
                 .iter()
                 .sum::<f32>()
                 / (band_count / 3) as f32;
-            let envelope_boost = 1.0 + self.beat_envelope * 0.5;
+            let envelope_boost = 1.0 + self.beat_envelope * 1.5;
             self.phase_x += bass * 0.1 * envelope_boost;
             self.phase_y += mid * 0.1 * envelope_boost;
         }
@@ -96,7 +96,8 @@ impl Visualization for Lissajous {
 
         // Generate the current curve
         let (a, b) = self.current_ratio();
-        let scale = 0.3 + self.peak * 0.6; // 30-90% of canvas
+        // Scale pumps with beat envelope — breathes with the music
+        let scale = 0.2 + self.peak * 0.4 + self.beat_envelope * 0.4;
         let num_points = 500;
         let curve: Vec<(f32, f32)> = (0..num_points)
             .map(|i| {
@@ -138,9 +139,9 @@ impl Visualization for Lissajous {
             }
         }
 
-        // Beat envelope brightens trail color
+        // Beat envelope drives trail brightness — dim between beats, vivid on beat
         let draw_color = if let Color::Rgb(r, g, b) = self.color {
-            let boost = 0.5 + self.beat_envelope * 0.5;
+            let boost = 0.2 + self.beat_envelope * 0.8;
             Color::Rgb(
                 (r as f32 * boost) as u8,
                 (g as f32 * boost) as u8,

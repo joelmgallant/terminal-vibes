@@ -94,6 +94,7 @@ pub struct SpectrumBars {
     cycling: bool,
     phase: f32,
     beat_envelope: f32,
+    beat_fired: bool,
 }
 
 impl SpectrumBars {
@@ -106,6 +107,7 @@ impl SpectrumBars {
             cycling: false,
             phase: 0.0,
             beat_envelope: 0.0,
+            beat_fired: false,
         }
     }
 }
@@ -118,9 +120,17 @@ impl Visualization for SpectrumBars {
     fn update(&mut self, frame: &FrameData) {
         self.spectrum = frame.spectrum.clone();
         self.beat_envelope = frame.beat.envelope;
-        if self.cycling {
-            // Color cycling accelerates with beat envelope
-            let cycle_speed = 0.005 + self.beat_envelope * 0.015;
+        self.beat_fired = frame.beat.beat;
+        // Color cycling accelerates dramatically with beat
+        let cycle_speed = if self.cycling {
+            0.005 + self.beat_envelope * 0.04
+        } else if self.beat_fired {
+            // Even without cycling enabled, beat shifts palette momentarily
+            0.0
+        } else {
+            0.0
+        };
+        if cycle_speed > 0.0 {
             self.phase = (self.phase + cycle_speed) % 1.0;
         }
     }
@@ -152,8 +162,9 @@ impl Visualization for SpectrumBars {
             } else {
                 self.spectrum[idx.min(band_count - 1)]
             };
-            // Beat envelope gives bars a subtle height boost
-            let value = (value * (1.0 + self.beat_envelope * 0.3)).clamp(0.0, 1.0);
+            // Beat envelope pumps bar height significantly
+            let beat_scale = 1.0 + self.beat_envelope * self.beat_envelope * 0.8;
+            let value = (value * beat_scale).clamp(0.0, 1.0);
 
             let x = area.x + (i as u16) * bar_step;
             let color_t = if self.cycling {
@@ -161,7 +172,18 @@ impl Visualization for SpectrumBars {
             } else {
                 t
             };
-            let color = self.palette.color(color_t);
+            let base_color = self.palette.color(color_t);
+            // Bars stay bright, beat adds a white-hot glow on top
+            let color = if let Color::Rgb(r, g, b) = base_color {
+                let boost = self.beat_envelope * 0.4;
+                Color::Rgb(
+                    (r as f32 + (255.0 - r as f32) * boost) as u8,
+                    (g as f32 + (255.0 - g as f32) * boost) as u8,
+                    (b as f32 + (255.0 - b as f32) * boost) as u8,
+                )
+            } else {
+                base_color
+            };
 
             if self.chunky {
                 let full_cells = (value * area.height as f32).round() as u16;

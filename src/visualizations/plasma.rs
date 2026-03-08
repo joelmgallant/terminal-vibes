@@ -58,16 +58,16 @@ impl Visualization for Plasma {
             self.k4 = 10.0 + treble * 8.0;
         }
 
-        // Beat envelope boosts frequency density across all oscillators
-        let beat_boost = 1.0 + self.beat_envelope * 0.3;
+        // Beat envelope warps frequency density — very visible distortion
+        let beat_boost = 1.0 + self.beat_envelope * 0.8;
         self.k1 *= beat_boost;
         self.k2 *= beat_boost;
         self.k3 *= beat_boost;
         self.k4 *= beat_boost;
 
-        // Peak + envelope boost hue rotation speed
-        self.hue_offset += 0.02 + frame.peak * 0.05 + self.beat_envelope * 0.03;
-        self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.02;
+        // Beat drives hue rotation hard — colors shift visibly on beat
+        self.hue_offset += 0.02 + frame.peak * 0.05 + self.beat_envelope * 0.08;
+        self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.06;
     }
 
     fn render(&self, area: Rect, buf: &mut Buffer) {

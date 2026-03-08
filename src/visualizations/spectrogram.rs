@@ -84,10 +84,10 @@ impl Visualization for Spectrogram {
                 };
 
                 let y = area.y + row as u16;
-                // Boost intensity on beat frames for a bright column marker
+                // Beat frames get a strong brightness boost — visible column markers
                 let is_beat = visible_beats.get(col_idx).copied().unwrap_or(false);
                 let display_intensity = if is_beat {
-                    (intensity + 0.3).clamp(0.0, 1.0)
+                    (intensity + 0.5).clamp(0.0, 1.0)
                 } else {
                     intensity
                 };

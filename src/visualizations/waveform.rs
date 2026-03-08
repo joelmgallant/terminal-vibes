@@ -37,13 +37,13 @@ impl Visualization for Waveform {
 
         let mid_y = area.y + area.height / 2;
 
-        // Brighten color on beat envelope
+        // Beat envelope drives brightness: dim between beats, vivid on beats
         let draw_color = if let Color::Rgb(r, g, b) = self.color {
-            let boost = 1.0 + self.beat_envelope * 0.8;
+            let brightness = 0.3 + self.beat_envelope * 0.7;
             Color::Rgb(
-                ((r as f32 * boost) as u8).max(r),
-                ((g as f32 * boost) as u8).max(g),
-                ((b as f32 * boost) as u8).max(b),
+                (r as f32 * brightness) as u8,
+                (g as f32 * brightness) as u8,
+                (b as f32 * brightness) as u8,
             )
         } else {
             self.color

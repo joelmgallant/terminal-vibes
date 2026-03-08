@@ -82,8 +82,8 @@ impl Visualization for Rain {
             self.ensure_columns(200);
         }
 
-        // Beat envelope surges drop speed
-        let global_speed = 0.3 + self.rms * 0.7 + self.beat_envelope * 0.5;
+        // Beat envelope surges drop speed dramatically
+        let global_speed = 0.3 + self.rms * 0.7 + self.beat_envelope * 1.5;
         let num_cols = self.columns.len();
 
         for (col_idx, column) in self.columns.iter_mut().enumerate() {
@@ -168,11 +168,13 @@ impl Visualization for Rain {
                     let fade = 1.0 - (dy as f32 / drop.length as f32);
                     let fade = fade * drop.brightness;
 
+                    // Beat envelope brightens all drops
+                    let beat_brightness = 0.4 + self.beat_envelope * 0.6;
                     let color = if let Color::Rgb(r, g, b) = base_color {
                         Color::Rgb(
-                            (r as f32 * fade) as u8,
-                            (g as f32 * fade) as u8,
-                            (b as f32 * fade) as u8,
+                            (r as f32 * fade * beat_brightness) as u8,
+                            (g as f32 * fade * beat_brightness) as u8,
+                            (b as f32 * fade * beat_brightness) as u8,
                         )
                     } else {
                         base_color

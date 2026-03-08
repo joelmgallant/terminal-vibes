@@ -115,11 +115,11 @@ impl Visualization for Aurora {
                 // Curtain center oscillates with sine wave
                 let wave = (x * curtain.freq * PI + self.time * curtain.speed).sin();
                 let center = curtain.base_y + wave * 0.1;
-                // Beat envelope swells curtain height
-                let height = curtain.height * (0.5 + energy + self.beat_envelope * 0.3);
+                // Beat envelope dramatically expands curtains
+                let height = curtain.height * (0.3 + energy + self.beat_envelope * 0.8);
 
-                // Brightness flash on peak, boosted by beat envelope
-                let brightness = 0.6 + energy * 0.3 + self.peak * 0.1 + self.beat_envelope * 0.2;
+                // Brightness pulses hard with beat — dim between, vivid on beat
+                let brightness = 0.3 + energy * 0.2 + self.beat_envelope * 0.6;
 
                 for py in 0..ph {
                     let y = py as f32 / ph as f32;
