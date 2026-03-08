@@ -1,5 +1,5 @@
-use terminal_vibes::processing::{FrameData, Processor, ProcessorConfig};
 use std::f32::consts::PI;
+use terminal_vibes::processing::{FrameData, Processor, ProcessorConfig};
 
 /// Generate a sine wave at a given frequency and sample rate.
 fn sine_wave(freq_hz: f32, sample_rate: f32, num_samples: usize) -> Vec<f32> {
@@ -38,8 +38,15 @@ fn test_processor_produces_spectrum_from_sine_wave() {
     assert_eq!(frame.waveform.len(), fft_size);
 
     // The spectrum should have at least one non-zero bin
-    let max_val = frame.spectrum.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    assert!(max_val > 0.0, "Spectrum should have non-zero values for a sine input");
+    let max_val = frame
+        .spectrum
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    assert!(
+        max_val > 0.0,
+        "Spectrum should have non-zero values for a sine input"
+    );
 }
 
 #[test]
@@ -77,7 +84,11 @@ fn test_processor_silence_produces_low_spectrum() {
 
     // All spectrum values should be at or near zero (clamped from dB floor)
     for val in &frame.spectrum {
-        assert!(*val <= 0.01, "Silence should produce near-zero spectrum, got {}", val);
+        assert!(
+            *val <= 0.01,
+            "Silence should produce near-zero spectrum, got {}",
+            val
+        );
     }
     approx::assert_abs_diff_eq!(frame.peak, 0.0, epsilon = 0.001);
 }
@@ -101,10 +112,21 @@ fn test_smoothing_reduces_jitter() {
     let silence = vec![0.0_f32; 1024];
     let frame2 = processor.process(&silence);
 
-    let max_after_silence = frame2.spectrum.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let max_loud = frame1.spectrum.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let max_after_silence = frame2
+        .spectrum
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let max_loud = frame1
+        .spectrum
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
 
     // Smoothed silence should still retain some energy from previous frame
-    assert!(max_after_silence > 0.0, "Smoothing should retain some energy");
+    assert!(
+        max_after_silence > 0.0,
+        "Smoothing should retain some energy"
+    );
     assert!(max_after_silence < max_loud, "But less than the loud frame");
 }

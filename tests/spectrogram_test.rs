@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::spectrogram::Spectrogram;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::spectrogram::Spectrogram;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_spectrogram_name() {

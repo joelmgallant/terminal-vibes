@@ -1,6 +1,6 @@
 //! Quick test to verify audio capture works without TUI.
-use ringbuf::HeapRb;
 use ringbuf::traits::{Consumer, Split};
+use ringbuf::HeapRb;
 use std::thread;
 use std::time::Duration;
 
@@ -44,13 +44,7 @@ fn log_device_streams(device_id: u32) {
         };
         let mut data_size: u32 = 0;
         let status = unsafe {
-            AudioObjectGetPropertyDataSize(
-                device_id,
-                &address,
-                0,
-                std::ptr::null(),
-                &mut data_size,
-            )
+            AudioObjectGetPropertyDataSize(device_id, &address, 0, std::ptr::null(), &mut data_size)
         };
         let num_streams = data_size as usize / std::mem::size_of::<u32>();
         eprintln!(
@@ -116,7 +110,10 @@ fn main() {
         }
     }
 
-    eprintln!("\nDone! Total samples: {}, Max amplitude: {:.6}", total_samples, max_amplitude);
+    eprintln!(
+        "\nDone! Total samples: {}, Max amplitude: {:.6}",
+        total_samples, max_amplitude
+    );
     if total_samples > 0 && max_amplitude > 0.0001 {
         eprintln!("Audio capture is WORKING!");
     } else if total_samples > 0 {

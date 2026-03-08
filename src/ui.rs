@@ -24,7 +24,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(mut registry: VisualizationRegistry, config: Config, running: Arc<AtomicBool>) -> Self {
+    pub fn new(
+        mut registry: VisualizationRegistry,
+        config: Config,
+        running: Arc<AtomicBool>,
+    ) -> Self {
         let mut sensitivity = 1.0_f32;
         // Restore saved state
         if let Some(state) = Self::load_state() {
@@ -87,16 +91,10 @@ impl App {
 
                 // Status bar
                 if self.config.display.show_status_bar && chunks.len() > 1 {
-                    let mode_name = self.registry
-                        .current()
-                        .map(|v| v.name())
-                        .unwrap_or("none");
+                    let mode_name = self.registry.current().map(|v| v.name()).unwrap_or("none");
                     let status = format!(
                         " [{}]  peak: {:.2}  rms: {:.2}  sens: {:.1}x  |  Tab: next  q: quit ",
-                        mode_name,
-                        display_frame.peak,
-                        display_frame.rms,
-                        self.sensitivity,
+                        mode_name, display_frame.peak, display_frame.rms, self.sensitivity,
                     );
                     let status_bar = Paragraph::new(status)
                         .style(Style::default().fg(Color::White).bg(Color::DarkGray));
@@ -171,9 +169,15 @@ impl App {
         let mut root = toml::value::Table::new();
 
         if let Some(name) = self.registry.current_name() {
-            root.insert("current_visualization".to_string(), toml::Value::String(name.to_string()));
+            root.insert(
+                "current_visualization".to_string(),
+                toml::Value::String(name.to_string()),
+            );
         }
-        root.insert("sensitivity".to_string(), toml::Value::Float(self.sensitivity as f64));
+        root.insert(
+            "sensitivity".to_string(),
+            toml::Value::Float(self.sensitivity as f64),
+        );
 
         let viz_states = self.registry.save_all();
         if !viz_states.is_empty() {

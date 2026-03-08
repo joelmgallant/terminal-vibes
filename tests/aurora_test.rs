@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::aurora::Aurora;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::aurora::Aurora;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_aurora_name() {
@@ -41,10 +41,6 @@ fn test_aurora_update_and_render() {
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
     // Should have some colored content
-    let has_content = (0..20u16).any(|y| {
-        (0..60u16).any(|x| {
-            buf[(x, y)].symbol() != " "
-        })
-    });
+    let has_content = (0..20u16).any(|y| (0..60u16).any(|x| buf[(x, y)].symbol() != " "));
     assert!(has_content, "Aurora should render visible curtains");
 }

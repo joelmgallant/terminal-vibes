@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::plasma::Plasma;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::plasma::Plasma;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_plasma_name() {
@@ -71,8 +71,6 @@ fn test_plasma_evolves_over_time() {
     viz.render(area, &mut buf2);
 
     // Colors should differ between frames
-    let differs = (0..10u16).any(|y| {
-        (0..20u16).any(|x| buf1[(x, y)].fg != buf2[(x, y)].fg)
-    });
+    let differs = (0..10u16).any(|y| (0..20u16).any(|x| buf1[(x, y)].fg != buf2[(x, y)].fg));
     assert!(differs, "Plasma should evolve over time");
 }

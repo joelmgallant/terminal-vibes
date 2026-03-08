@@ -1,7 +1,7 @@
-use terminal_vibes::visualizations::render::{BrailleCanvas, HalfBlockCanvas};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use terminal_vibes::visualizations::render::{BrailleCanvas, HalfBlockCanvas};
 
 #[test]
 fn test_braille_canvas_dimensions() {
@@ -22,8 +22,11 @@ fn test_braille_canvas_empty_renders_blanks() {
         for x in 0..4 {
             let cell = &buf[(x, y)];
             let ch = cell.symbol().chars().next().unwrap();
-            assert!(ch == '\u{2800}' || ch == ' ',
-                "Expected braille blank at ({x},{y}), got {:?}", ch);
+            assert!(
+                ch == '\u{2800}' || ch == ' ',
+                "Expected braille blank at ({x},{y}), got {:?}",
+                ch
+            );
         }
     }
 }
@@ -71,8 +74,8 @@ fn test_half_block_canvas_dimensions() {
 #[test]
 fn test_half_block_canvas_set_and_render() {
     let mut canvas = HalfBlockCanvas::new(4, 2);
-    canvas.set(0, 0, Color::Red);   // top pixel of cell (0,0)
-    canvas.set(0, 1, Color::Blue);  // bottom pixel of cell (0,0)
+    canvas.set(0, 0, Color::Red); // top pixel of cell (0,0)
+    canvas.set(0, 1, Color::Blue); // bottom pixel of cell (0,0)
     let area = Rect::new(0, 0, 4, 2);
     let mut buf = Buffer::empty(area);
     canvas.render(&area, &mut buf);

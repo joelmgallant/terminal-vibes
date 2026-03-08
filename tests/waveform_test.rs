@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::waveform::Waveform;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::waveform::Waveform;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_waveform_name() {

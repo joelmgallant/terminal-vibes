@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::starfield::Starfield;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::starfield::Starfield;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_starfield_name() {
@@ -45,9 +45,16 @@ fn test_starfield_particles_appear_after_updates() {
     viz.render(area, &mut buf);
     let has_content = (0..24).any(|y| {
         (0..80).any(|x| {
-            let ch = buf[(x as u16, y as u16)].symbol().chars().next().unwrap_or(' ');
+            let ch = buf[(x as u16, y as u16)]
+                .symbol()
+                .chars()
+                .next()
+                .unwrap_or(' ');
             ch != ' ' && ch != '\u{2800}'
         })
     });
-    assert!(has_content, "Starfield should have visible particles after updates");
+    assert!(
+        has_content,
+        "Starfield should have visible particles after updates"
+    );
 }

@@ -19,8 +19,7 @@ mod ffi {
     pub const kAudioObjectPropertyScopeGlobal: u32 = u32::from_be_bytes(*b"glob");
     pub const kAudioObjectPropertyElementMain: u32 = 0;
 
-    pub const kAudioHardwarePropertyDefaultOutputDevice: u32 =
-        u32::from_be_bytes(*b"dOut");
+    pub const kAudioHardwarePropertyDefaultOutputDevice: u32 = u32::from_be_bytes(*b"dOut");
     pub const kAudioDevicePropertyDeviceUID: u32 = u32::from_be_bytes(*b"uid ");
 
     #[repr(C)]
@@ -81,15 +80,10 @@ mod ffi {
             io_proc_id: AudioDeviceIOProcID,
         ) -> OSStatus;
 
-        pub fn AudioDeviceStart(
-            device: AudioDeviceID,
-            io_proc_id: AudioDeviceIOProcID,
-        ) -> OSStatus;
+        pub fn AudioDeviceStart(device: AudioDeviceID, io_proc_id: AudioDeviceIOProcID)
+            -> OSStatus;
 
-        pub fn AudioDeviceStop(
-            device: AudioDeviceID,
-            io_proc_id: AudioDeviceIOProcID,
-        ) -> OSStatus;
+        pub fn AudioDeviceStop(device: AudioDeviceID, io_proc_id: AudioDeviceIOProcID) -> OSStatus;
     }
 
     extern "C" {
@@ -178,8 +172,12 @@ unsafe fn process_audio_buffer(input_data: *const c_void, ctx: &mut CallbackCont
         let max_val = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
         log::debug!(
             "IOProc #{}: buffers={}, ch={}, bytes={}, samples={}, max={:.6}",
-            count, buffer_list.number_buffers, buf.number_channels,
-            buf.data_byte_size, num_samples, max_val,
+            count,
+            buffer_list.number_buffers,
+            buf.number_channels,
+            buf.data_byte_size,
+            num_samples,
+            max_val,
         );
     }
 
@@ -205,8 +203,12 @@ fn get_default_output_device() -> Result<ffi::AudioDeviceID> {
     };
     let status = unsafe {
         ffi::AudioObjectGetPropertyData(
-            ffi::kAudioObjectSystemObject, &address, 0, std::ptr::null(),
-            &mut data_size, &mut device_id as *mut _ as *mut _,
+            ffi::kAudioObjectSystemObject,
+            &address,
+            0,
+            std::ptr::null(),
+            &mut data_size,
+            &mut device_id as *mut _ as *mut _,
         )
     };
     if status != 0 {
@@ -229,12 +231,20 @@ fn get_device_uid(device_id: ffi::AudioDeviceID) -> Result<String> {
     let mut data_size = std::mem::size_of::<core_foundation::string::CFStringRef>() as u32;
     let status = unsafe {
         ffi::AudioObjectGetPropertyData(
-            device_id, &address, 0, std::ptr::null(),
-            &mut data_size, &mut uid_ref as *mut _ as *mut _,
+            device_id,
+            &address,
+            0,
+            std::ptr::null(),
+            &mut data_size,
+            &mut uid_ref as *mut _ as *mut _,
         )
     };
     if status != 0 {
-        return Err(anyhow!("Failed to get device UID for {}: {}", device_id, status));
+        return Err(anyhow!(
+            "Failed to get device UID for {}: {}",
+            device_id,
+            status
+        ));
     }
     let cf_string: CFString = unsafe { CFString::wrap_under_get_rule(uid_ref) };
     let uid = cf_string.to_string();
@@ -267,8 +277,8 @@ impl AudioTap {
             .ok_or_else(|| anyhow!("CATapDescription class not found. Requires macOS 15+."))?;
 
         let tap_desc: *mut AnyObject = msg_send![tap_desc_class, alloc];
-        let nsarray_class = AnyClass::get(c"NSArray")
-            .ok_or_else(|| anyhow!("NSArray class not found"))?;
+        let nsarray_class =
+            AnyClass::get(c"NSArray").ok_or_else(|| anyhow!("NSArray class not found"))?;
         let empty_array: *mut AnyObject = msg_send![nsarray_class, array];
         let tap_desc: *mut AnyObject =
             msg_send![tap_desc, initStereoGlobalTapButExcludeProcesses: empty_array];
@@ -276,8 +286,8 @@ impl AudioTap {
             return Err(anyhow!("Failed to create CATapDescription"));
         }
 
-        let nsuuid_class = AnyClass::get(c"NSUUID")
-            .ok_or_else(|| anyhow!("NSUUID class not found"))?;
+        let nsuuid_class =
+            AnyClass::get(c"NSUUID").ok_or_else(|| anyhow!("NSUUID class not found"))?;
         let tap_uuid: *mut AnyObject = msg_send![nsuuid_class, alloc];
         let tap_uuid: *mut AnyObject = msg_send![tap_uuid, init];
         let _: () = msg_send![tap_desc, setUUID: tap_uuid];
@@ -289,7 +299,8 @@ impl AudioTap {
         let status = ffi::AudioHardwareCreateProcessTap(tap_desc as *const _, &mut tap_id);
         if status != 0 {
             return Err(anyhow!(
-                "AudioHardwareCreateProcessTap failed: {}. Requires macOS 15+.", status
+                "AudioHardwareCreateProcessTap failed: {}. Requires macOS 15+.",
+                status
             ));
         }
         log::debug!("Created process tap with ID {}", tap_id);
@@ -334,7 +345,10 @@ impl AudioTap {
             ffi::AudioHardwareDestroyAggregateDevice(aggregate_device_id);
             ffi::AudioHardwareDestroyProcessTap(tap_id);
             ffi::dispatch_release(dispatch_queue);
-            return Err(anyhow!("AudioDeviceCreateIOProcIDWithBlock failed: {}", status));
+            return Err(anyhow!(
+                "AudioDeviceCreateIOProcIDWithBlock failed: {}",
+                status
+            ));
         }
         log::debug!("Created IOProc block on aggregate device");
 
@@ -350,7 +364,9 @@ impl AudioTap {
 
         log::info!(
             "Audio tap started (tap_id={}, aggregate_device={}, sample_rate={})",
-            tap_id, aggregate_device_id, config.sample_rate
+            tap_id,
+            aggregate_device_id,
+            config.sample_rate
         );
 
         Ok(Self {
@@ -387,21 +403,50 @@ impl AudioTap {
         );
 
         let tap_dict = CFDictionary::from_CFType_pairs(&[
-            (CFString::from_static_string("uid").as_CFType(), uuid_cf.as_CFType()),
-            (CFString::from_static_string("drift").as_CFType(), CFBoolean::true_value().as_CFType()),
+            (
+                CFString::from_static_string("uid").as_CFType(),
+                uuid_cf.as_CFType(),
+            ),
+            (
+                CFString::from_static_string("drift").as_CFType(),
+                CFBoolean::true_value().as_CFType(),
+            ),
         ]);
-        let tap_array =
-            core_foundation::array::CFArray::from_CFTypes(&[tap_dict.as_CFType()]);
+        let tap_array = core_foundation::array::CFArray::from_CFTypes(&[tap_dict.as_CFType()]);
 
         let description = CFDictionary::from_CFType_pairs(&[
-            (CFString::from_static_string("name").as_CFType(), CFString::new("terminal-vibes-tap").as_CFType()),
-            (CFString::from_static_string("uid").as_CFType(), CFString::new(aggregate_uid).as_CFType()),
-            (CFString::from_static_string("master").as_CFType(), v_output_uid.as_CFType()),
-            (CFString::from_static_string("private").as_CFType(), CFBoolean::true_value().as_CFType()),
-            (CFString::from_static_string("stacked").as_CFType(), CFBoolean::false_value().as_CFType()),
-            (CFString::from_static_string("tapautostart").as_CFType(), CFBoolean::true_value().as_CFType()),
-            (CFString::from_static_string("subdevices").as_CFType(), sub_device_array.as_CFType()),
-            (CFString::from_static_string("taps").as_CFType(), tap_array.as_CFType()),
+            (
+                CFString::from_static_string("name").as_CFType(),
+                CFString::new("terminal-vibes-tap").as_CFType(),
+            ),
+            (
+                CFString::from_static_string("uid").as_CFType(),
+                CFString::new(aggregate_uid).as_CFType(),
+            ),
+            (
+                CFString::from_static_string("master").as_CFType(),
+                v_output_uid.as_CFType(),
+            ),
+            (
+                CFString::from_static_string("private").as_CFType(),
+                CFBoolean::true_value().as_CFType(),
+            ),
+            (
+                CFString::from_static_string("stacked").as_CFType(),
+                CFBoolean::false_value().as_CFType(),
+            ),
+            (
+                CFString::from_static_string("tapautostart").as_CFType(),
+                CFBoolean::true_value().as_CFType(),
+            ),
+            (
+                CFString::from_static_string("subdevices").as_CFType(),
+                sub_device_array.as_CFType(),
+            ),
+            (
+                CFString::from_static_string("taps").as_CFType(),
+                tap_array.as_CFType(),
+            ),
         ]);
 
         let mut aggregate_device_id: ffi::AudioDeviceID = 0;
@@ -410,11 +455,13 @@ impl AudioTap {
             &mut aggregate_device_id,
         );
         if status != 0 {
-            return Err(anyhow!("AudioHardwareCreateAggregateDevice failed: {}", status));
+            return Err(anyhow!(
+                "AudioHardwareCreateAggregateDevice failed: {}",
+                status
+            ));
         }
         Ok(aggregate_device_id)
     }
-
 }
 
 impl Drop for AudioTap {
@@ -428,7 +475,8 @@ impl Drop for AudioTap {
             let _ = Box::from_raw(self._callback_context);
             log::info!(
                 "Audio tap destroyed (tap_id={}, aggregate_device={})",
-                self.tap_id, self.aggregate_device_id
+                self.tap_id,
+                self.aggregate_device_id
             );
         }
     }

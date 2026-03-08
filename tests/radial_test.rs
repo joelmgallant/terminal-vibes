@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::radial::RadialSpectrum;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::radial::RadialSpectrum;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_radial_name() {
@@ -42,7 +42,11 @@ fn test_radial_update_and_render() {
     viz.render(area, &mut buf);
     let has_content = (0..24).any(|y| {
         (0..80).any(|x| {
-            let ch = buf[(x as u16, y as u16)].symbol().chars().next().unwrap_or(' ');
+            let ch = buf[(x as u16, y as u16)]
+                .symbol()
+                .chars()
+                .next()
+                .unwrap_or(' ');
             ch != ' '
         })
     });

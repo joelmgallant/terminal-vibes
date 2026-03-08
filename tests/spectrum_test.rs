@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::spectrum::SpectrumBars;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::spectrum::SpectrumBars;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_spectrum_bars_name() {

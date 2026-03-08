@@ -1,8 +1,8 @@
-use terminal_vibes::processing::FrameData;
-use terminal_vibes::visualizations::Visualization;
-use terminal_vibes::visualizations::rain::Rain;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use terminal_vibes::processing::FrameData;
+use terminal_vibes::visualizations::rain::Rain;
+use terminal_vibes::visualizations::Visualization;
 
 #[test]
 fn test_rain_name() {
@@ -43,10 +43,9 @@ fn test_rain_streams_appear_after_updates() {
     let area = Rect::new(0, 0, 80, 24);
     let mut buf = Buffer::empty(area);
     viz.render(area, &mut buf);
-    let has_content = (0..24u16).any(|y| {
-        (0..80u16).any(|x| {
-            buf[(x, y)].symbol() != " "
-        })
-    });
-    assert!(has_content, "Rain should have visible streams after updates");
+    let has_content = (0..24u16).any(|y| (0..80u16).any(|x| buf[(x, y)].symbol() != " "));
+    assert!(
+        has_content,
+        "Rain should have visible streams after updates"
+    );
 }
