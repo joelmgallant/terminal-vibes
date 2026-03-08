@@ -198,6 +198,90 @@ impl BandDetector {
     }
 }
 
+struct TempoEstimator {
+    /// Ring buffer of onset strength values
+    onset_buf: Vec<f32>,
+    onset_pos: usize,
+    onset_len: usize,
+    /// Current tempo state
+    bpm: f32,
+    confidence: f32,
+    phase: f32,
+    predicted_beat: bool,
+    /// Frame counter for update interval
+    frame_count: usize,
+}
+
+impl TempoEstimator {
+    fn new(config: &BeatDetectionConfig) -> Self {
+        Self {
+            onset_buf: vec![0.0; config.tempo_buffer_frames],
+            onset_pos: 0,
+            onset_len: 0,
+            bpm: 0.0,
+            confidence: 0.0,
+            phase: 0.0,
+            predicted_beat: false,
+            frame_count: 0,
+        }
+    }
+
+    fn onset_len(&self) -> usize {
+        self.onset_len
+    }
+
+    fn update(&mut self, onset_strength: f32, beat_fired: bool, config: &BeatDetectionConfig) {
+        // Push onset strength into ring buffer
+        let capacity = self.onset_buf.len();
+        self.onset_buf[self.onset_pos] = onset_strength;
+        self.onset_pos = (self.onset_pos + 1) % capacity;
+        if self.onset_len < capacity {
+            self.onset_len += 1;
+        }
+
+        self.frame_count += 1;
+
+        // Phase tracking
+        if self.bpm > 0.0 {
+            // Assume 60 FPS processing rate
+            self.phase += (self.bpm / 60.0) / 60.0;
+        }
+
+        // Reset phase on confirmed beat
+        if beat_fired {
+            self.phase = 0.0;
+        }
+
+        // Predicted beat when phase wraps
+        self.predicted_beat = false;
+        if self.confidence >= config.tempo_confidence_threshold && self.phase >= 1.0 {
+            if config.prediction_strength > 0.0 {
+                self.predicted_beat = true;
+            }
+            self.phase -= 1.0;
+        }
+
+        // Periodically recompute BPM
+        if self.frame_count % config.tempo_update_interval == 0 && self.onset_len >= 60 {
+            self.estimate_tempo(config);
+        }
+    }
+
+    fn estimate_tempo(&mut self, config: &BeatDetectionConfig) {
+        // Placeholder — Task 4 implements this
+        let _ = config;
+    }
+
+    fn tempo_data(&self) -> TempoData {
+        TempoData {
+            bpm: self.bpm,
+            confidence: self.confidence,
+            phase: self.phase,
+            predicted_beat: self.predicted_beat,
+        }
+    }
+}
+
 pub struct BeatDetector {
     bass: BandDetector,
     mid: BandDetector,
@@ -509,5 +593,37 @@ mod tests {
             "Energy gate should prevent beats on near-silence, got {} false beats",
             false_beats
         );
+    }
+
+    #[test]
+    fn test_tempo_silence_produces_no_bpm() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Feed 300 frames of zero onset strength, no beats
+        for _ in 0..300 {
+            estimator.update(0.0, false, &config);
+        }
+        let tempo = estimator.tempo_data();
+        assert!(
+            tempo.confidence < 0.1,
+            "Silence should have near-zero confidence, got {}",
+            tempo.confidence
+        );
+        assert!(
+            !tempo.predicted_beat,
+            "No predicted beats during silence"
+        );
+    }
+
+    #[test]
+    fn test_tempo_onset_buffer_fills() {
+        let config = make_config();
+        let mut estimator = TempoEstimator::new(&config);
+        // Feed some onset strength values
+        for i in 0..50 {
+            estimator.update(i as f32 * 0.1, false, &config);
+        }
+        // Should have accumulated 50 values
+        assert_eq!(estimator.onset_len(), 50);
     }
 }
