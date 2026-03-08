@@ -16,12 +16,19 @@ use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Duration the visualization label stays fully visible after switching.
+const LABEL_VISIBLE_SECS: f32 = 2.0;
+/// Duration the label spends fading out after the visible period.
+const LABEL_FADE_SECS: f32 = 1.0;
+
 pub struct App {
     registry: VisualizationRegistry,
     config: Config,
     running: Arc<AtomicBool>,
     sensitivity: f32,
     beat_intensity: f32,
+    /// When the visualization was last switched (drives label fade).
+    label_shown_at: Instant,
 }
 
 impl App {
@@ -53,6 +60,7 @@ impl App {
             running,
             sensitivity,
             beat_intensity,
+            label_shown_at: Instant::now(),
         }
     }
 
@@ -109,17 +117,35 @@ impl App {
                 let viz_area = chunks[0];
                 self.registry.render_current(viz_area, f.buffer_mut());
 
-                // Visualization name label (bottom-center overlay)
+                // Visualization name label — fades out after switching
                 if viz_area.height > 2 {
-                    let name = self.registry.current().map(|v| v.name()).unwrap_or("none");
-                    let label = format!(" {} ", name);
-                    let label_w = label.len() as u16;
-                    let label_x = viz_area.x + viz_area.width.saturating_sub(label_w) / 2;
-                    let label_y = viz_area.y + viz_area.height - 1;
-                    let label_area = Rect::new(label_x, label_y, label_w.min(viz_area.width), 1);
-                    let label_widget = Paragraph::new(label)
-                        .style(Style::default().fg(Color::Gray).bg(Color::Black));
-                    f.render_widget(label_widget, label_area);
+                    let elapsed = self.label_shown_at.elapsed().as_secs_f32();
+                    let total = LABEL_VISIBLE_SECS + LABEL_FADE_SECS;
+                    if elapsed < total {
+                        let opacity = if elapsed < LABEL_VISIBLE_SECS {
+                            1.0
+                        } else {
+                            1.0 - (elapsed - LABEL_VISIBLE_SECS) / LABEL_FADE_SECS
+                        };
+                        let gray = (180.0 * opacity) as u8;
+                        let bg_gray = (30.0 * opacity) as u8;
+
+                        let name =
+                            self.registry.current().map(|v| v.name()).unwrap_or("none");
+                        let label = format!(" {} ", name);
+                        let label_w = label.len() as u16;
+                        let label_x =
+                            viz_area.x + viz_area.width.saturating_sub(label_w) / 2;
+                        let label_y = viz_area.y + viz_area.height - 1;
+                        let label_area =
+                            Rect::new(label_x, label_y, label_w.min(viz_area.width), 1);
+                        let label_widget = Paragraph::new(label).style(
+                            Style::default()
+                                .fg(Color::Rgb(gray, gray, gray))
+                                .bg(Color::Rgb(bg_gray, bg_gray, bg_gray)),
+                        );
+                        f.render_widget(label_widget, label_area);
+                    }
                 }
 
                 // Status bar
@@ -173,10 +199,12 @@ impl App {
                 } else {
                     self.registry.next();
                 }
+                self.label_shown_at = Instant::now();
                 true
             }
             KeyCode::BackTab => {
                 self.registry.prev();
+                self.label_shown_at = Instant::now();
                 true
             }
             KeyCode::Char('+') | KeyCode::Char('=') => {
