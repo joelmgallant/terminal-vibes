@@ -331,27 +331,33 @@ impl TempoEstimator {
             return;
         }
 
-        // Compute autocorrelation with harmonic summation
+        // Compute autocorrelation with octave disambiguation
         let mut best_score = 0.0_f32;
         let mut best_lag = min_lag;
         let mut best_raw = 0.0_f32;
 
         for lag in min_lag..=max_lag {
             let r = Self::autocorrelate_at_lag(&scratch, lag);
+            let mut score = r;
 
-            // Harmonic summation: add energy at lag/2, lag/3 (sub-harmonics help resolve octave)
-            let mut harmonic_sum = r;
+            // Penalize lags whose sub-harmonic (half period) is equally strong —
+            // indicates this lag is a multiple of the true period
             let sub2 = lag / 2;
             if sub2 >= min_lag {
-                harmonic_sum += 0.5 * Self::autocorrelate_at_lag(&scratch, sub2);
-            }
-            let sub3 = lag / 3;
-            if sub3 >= min_lag {
-                harmonic_sum += 0.3 * Self::autocorrelate_at_lag(&scratch, sub3);
+                let r_sub = Self::autocorrelate_at_lag(&scratch, sub2);
+                if r_sub > r * 0.8 {
+                    score *= 0.5;
+                }
             }
 
-            if harmonic_sum > best_score {
-                best_score = harmonic_sum;
+            // Boost if super-harmonic (double period) is also strong — confirms fundamental
+            let super2 = lag * 2;
+            if super2 < len {
+                score += 0.3 * Self::autocorrelate_at_lag(&scratch, super2);
+            }
+
+            if score > best_score {
+                best_score = score;
                 best_lag = lag;
                 best_raw = r;
             }
