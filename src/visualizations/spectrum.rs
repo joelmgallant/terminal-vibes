@@ -121,6 +121,12 @@ pub struct SpectrumBars {
     beat_fired: bool,
 }
 
+impl Default for SpectrumBars {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SpectrumBars {
     pub fn new() -> Self {
         Self {

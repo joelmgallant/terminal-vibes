@@ -9,6 +9,12 @@ pub struct VisualizationRegistry {
     current_index: usize,
 }
 
+impl Default for VisualizationRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VisualizationRegistry {
     pub fn new() -> Self {
         Self {

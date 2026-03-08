@@ -30,6 +30,12 @@ pub struct Rain {
     beat_fired: bool,
 }
 
+impl Default for Rain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rain {
     pub fn new() -> Self {
         Self {

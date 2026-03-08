@@ -16,6 +16,12 @@ pub struct Waveform {
     beat_envelope: f32,
 }
 
+impl Default for Waveform {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Waveform {
     pub fn new() -> Self {
         Self {

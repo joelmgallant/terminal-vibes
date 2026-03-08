@@ -31,6 +31,12 @@ pub struct Aurora {
     column_colors: Vec<(f32, f32, f32)>,
 }
 
+impl Default for Aurora {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Aurora {
     pub fn new() -> Self {
         Self {
@@ -47,6 +53,7 @@ impl Aurora {
     }
 
     fn make_curtains(n: usize) -> Vec<Curtain> {
+        #[allow(clippy::type_complexity)]
         let configs: Vec<(f32, f32, f32, f32, (u8, u8, u8))> = vec![
             (0.7, 2.0, 0.3, 0.4, (0, 200, 100)),  // green, low
             (0.5, 3.0, 0.5, 0.3, (0, 150, 255)),  // blue, mid
@@ -146,8 +153,7 @@ impl Visualization for Aurora {
             for (py, &(r, g, b)) in self.column_colors.iter().enumerate() {
                 // Skip pixels that would quantize to invisible black (matches STEP=16)
                 if r.max(g).max(b) > 16.0 {
-                    let color =
-                        Color::Rgb((r as u8).min(255), (g as u8).min(255), (b as u8).min(255));
+                    let color = Color::Rgb(r as u8, g as u8, b as u8);
                     self.canvas.set(px, py, color);
                 }
             }

@@ -57,6 +57,12 @@ pub struct Starfield {
     canvas: BrailleCanvas,
 }
 
+impl Default for Starfield {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Starfield {
     pub fn new() -> Self {
         Self::with_density(500)

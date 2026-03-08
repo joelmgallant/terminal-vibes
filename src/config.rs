@@ -2,7 +2,7 @@ use crate::beat::BeatDetectionConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub audio: AudioConfig,
@@ -36,17 +36,6 @@ pub struct KeybindingsConfig {
     pub toggle_status: String,
     pub increase_sensitivity: String,
     pub decrease_sensitivity: String,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            audio: AudioConfig::default(),
-            display: DisplayConfig::default(),
-            keybindings: KeybindingsConfig::default(),
-            beat_detection: BeatDetectionConfig::default(),
-        }
-    }
 }
 
 impl Default for AudioConfig {

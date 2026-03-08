@@ -52,6 +52,12 @@ pub struct Tunnel {
     canvas: HalfBlockCanvas,
 }
 
+impl Default for Tunnel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Tunnel {
     pub fn new() -> Self {
         Self {

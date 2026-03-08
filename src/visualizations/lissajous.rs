@@ -36,6 +36,12 @@ pub struct Lissajous {
     canvas: BrailleCanvas,
 }
 
+impl Default for Lissajous {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Lissajous {
     pub fn new() -> Self {
         Self {

@@ -135,6 +135,7 @@ fn bin_to_bands_into(magnitudes: &[f32], bands: &mut [f32], db_floor: f32) {
     let f_min_bin = 1.0_f64; // ~20-40 Hz depending on sample rate
     let f_max_bin = n as f64; // Nyquist
 
+    #[allow(clippy::needless_range_loop)]
     for band in 0..num_bands {
         // Log-spaced bin edges: f_min * (f_max/f_min)^(t)
         let t0 = band as f64 / num_bands as f64;

@@ -44,6 +44,7 @@ mod ffi {
 
     #[link(name = "AudioToolbox", kind = "framework")]
     #[link(name = "CoreAudio", kind = "framework")]
+    #[allow(clippy::duplicated_attributes)]
     extern "C" {
         pub fn AudioHardwareCreateProcessTap(
             tap_description: *const c_void,

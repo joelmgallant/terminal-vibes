@@ -19,6 +19,12 @@ pub struct Plasma {
     canvas: HalfBlockCanvas,
 }
 
+impl Default for Plasma {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Plasma {
     pub fn new() -> Self {
         Self {

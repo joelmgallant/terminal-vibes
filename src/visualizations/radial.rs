@@ -16,6 +16,12 @@ pub struct RadialSpectrum {
     canvas: HalfBlockCanvas,
 }
 
+impl Default for RadialSpectrum {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RadialSpectrum {
     pub fn new() -> Self {
         Self {

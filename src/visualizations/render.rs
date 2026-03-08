@@ -89,7 +89,9 @@ impl BrailleCanvas {
         for cy in 0..render_rows {
             for cx in 0..render_cols {
                 let mut code: u8 = 0;
+                #[allow(clippy::needless_range_loop)]
                 for dx in 0..2usize {
+                    #[allow(clippy::needless_range_loop)]
                     for dy in 0..4usize {
                         let px = cx as usize * 2 + dx;
                         let py = cy as usize * 4 + dy;
