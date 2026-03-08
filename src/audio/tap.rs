@@ -2,21 +2,27 @@ use super::AudioConfig;
 use anyhow::{anyhow, Result};
 use ringbuf::traits::Producer;
 use ringbuf::HeapProd;
+use std::os::raw::c_void;
+use std::sync::atomic::{AtomicU32, Ordering};
 
-// Core Audio FFI types and constants
-#[allow(non_camel_case_types)]
+// Core Audio FFI
+#[allow(non_camel_case_types, non_upper_case_globals, dead_code)]
 mod ffi {
     use std::os::raw::c_void;
 
     pub type OSStatus = i32;
     pub type AudioObjectID = u32;
     pub type AudioDeviceID = AudioObjectID;
-    pub type UInt32 = u32;
-    pub type Float64 = f64;
+    pub type AudioDeviceIOProcID = *mut c_void;
 
     pub const kAudioObjectSystemObject: AudioObjectID = 1;
+    pub const kAudioObjectPropertyScopeGlobal: u32 = u32::from_be_bytes(*b"glob");
+    pub const kAudioObjectPropertyElementMain: u32 = 0;
 
-    // AudioObjectPropertyAddress
+    pub const kAudioHardwarePropertyDefaultOutputDevice: u32 =
+        u32::from_be_bytes(*b"dOut");
+    pub const kAudioDevicePropertyDeviceUID: u32 = u32::from_be_bytes(*b"uid ");
+
     #[repr(C)]
     pub struct AudioObjectPropertyAddress {
         pub selector: u32,
@@ -24,70 +30,10 @@ mod ffi {
         pub element: u32,
     }
 
-    // Property selectors
-    pub const kAudioHardwarePropertyProcessTapList: u32 = u32::from_be_bytes(*b"tps#");
-    pub const kAudioHardwarePropertyTapList: u32 = u32::from_be_bytes(*b"tps#");
-
-    // Scopes
-    pub const kAudioObjectPropertyScopeGlobal: u32 = u32::from_be_bytes(*b"glob");
-    pub const kAudioObjectPropertyScopeInput: u32 = u32::from_be_bytes(*b"inpt");
-    pub const kAudioObjectPropertyScopeOutput: u32 = u32::from_be_bytes(*b"outp");
-    pub const kAudioObjectPropertyElementMain: u32 = 0;
-
-    // Device properties
-    pub const kAudioDevicePropertyStreamConfiguration: u32 = u32::from_be_bytes(*b"slay");
-    pub const kAudioDevicePropertyNominalSampleRate: u32 = u32::from_be_bytes(*b"nsrt");
-
-    // AudioUnit types
-    pub type AudioUnit = *mut c_void;
-    pub type AudioComponentInstance = AudioUnit;
-    pub type AudioComponent = *mut c_void;
-
-    #[repr(C)]
-    pub struct AudioComponentDescription {
-        pub component_type: u32,
-        pub component_sub_type: u32,
-        pub component_manufacturer: u32,
-        pub component_flags: u32,
-        pub component_flags_mask: u32,
-    }
-
-    pub const kAudioUnitType_Output: u32 = u32::from_be_bytes(*b"auou");
-    pub const kAudioUnitSubType_HALOutput: u32 = u32::from_be_bytes(*b"ahal");
-    pub const kAudioUnitManufacturer_Apple: u32 = u32::from_be_bytes(*b"appl");
-
-    // AudioUnit properties
-    pub const kAudioOutputUnitProperty_EnableIO: u32 = 2003;
-    pub const kAudioOutputUnitProperty_CurrentDevice: u32 = 2000;
-    pub const kAudioUnitProperty_StreamFormat: u32 = 8;
-    pub const kAudioUnitProperty_SetRenderCallback: u32 = 23;
-
-    pub const kAudioUnitScope_Input: u32 = 1;
-    pub const kAudioUnitScope_Output: u32 = 0;
-    pub const kAudioUnitScope_Global: u32 = 0;
-
-    #[repr(C)]
-    pub struct AudioStreamBasicDescription {
-        pub sample_rate: Float64,
-        pub format_id: u32,
-        pub format_flags: u32,
-        pub bytes_per_packet: u32,
-        pub frames_per_packet: u32,
-        pub bytes_per_frame: u32,
-        pub channels_per_frame: u32,
-        pub bits_per_channel: u32,
-        pub reserved: u32,
-    }
-
-    pub const kAudioFormatLinearPCM: u32 = u32::from_be_bytes(*b"lpcm");
-    pub const kAudioFormatFlagIsFloat: u32 = 1 << 0;
-    pub const kAudioFormatFlagIsPacked: u32 = 1 << 3;
-    pub const kAudioFormatFlagIsNonInterleaved: u32 = 1 << 5;
-
     #[repr(C)]
     pub struct AudioBufferList {
         pub number_buffers: u32,
-        pub buffers: [AudioBuffer; 1], // variable-length array
+        pub buffers: [AudioBuffer; 1],
     }
 
     #[repr(C)]
@@ -97,356 +43,402 @@ mod ffi {
         pub data: *mut c_void,
     }
 
-    #[repr(C)]
-    pub struct AURenderCallbackStruct {
-        pub input_proc: unsafe extern "C" fn(
-            in_ref_con: *mut c_void,
-            io_action_flags: *mut u32,
-            in_time_stamp: *const AudioTimeStamp,
-            in_bus_number: u32,
-            in_number_frames: u32,
-            io_data: *mut AudioBufferList,
-        ) -> OSStatus,
-        pub input_proc_ref_con: *mut c_void,
-    }
-
-    #[repr(C)]
-    pub struct AudioTimeStamp {
-        pub sample_time: f64,
-        pub host_time: u64,
-        pub rate_scalar: f64,
-        pub word_clock_time: u64,
-        pub smpte_time: [u8; 24], // SMPTETime struct, opaque here
-        pub flags: u32,
-        pub reserved: u32,
-    }
-
-    // CATapDescription for macOS 15+
-    // This is an Objective-C class. We interact via objc runtime.
-
     #[link(name = "AudioToolbox", kind = "framework")]
     #[link(name = "CoreAudio", kind = "framework")]
     extern "C" {
-        pub fn AudioObjectGetPropertyDataSize(
-            object_id: AudioObjectID,
-            address: *const AudioObjectPropertyAddress,
-            qualifier_data_size: u32,
-            qualifier_data: *const c_void,
-            out_data_size: *mut u32,
+        pub fn AudioHardwareCreateProcessTap(
+            tap_description: *const c_void,
+            out_tap_id: *mut AudioObjectID,
         ) -> OSStatus;
+
+        pub fn AudioHardwareDestroyProcessTap(tap_id: AudioObjectID) -> OSStatus;
+
+        pub fn AudioHardwareCreateAggregateDevice(
+            description: *const c_void,
+            out_device_id: *mut AudioDeviceID,
+        ) -> OSStatus;
+
+        pub fn AudioHardwareDestroyAggregateDevice(device_id: AudioDeviceID) -> OSStatus;
 
         pub fn AudioObjectGetPropertyData(
             object_id: AudioObjectID,
             address: *const AudioObjectPropertyAddress,
             qualifier_data_size: u32,
             qualifier_data: *const c_void,
-            io_data_size: *mut u32,
-            out_data: *mut c_void,
-        ) -> OSStatus;
-
-        pub fn AudioObjectSetPropertyData(
-            object_id: AudioObjectID,
-            address: *const AudioObjectPropertyAddress,
-            qualifier_data_size: u32,
-            qualifier_data: *const c_void,
-            data_size: u32,
-            data: *const c_void,
-        ) -> OSStatus;
-
-        pub fn AudioComponentFindNext(
-            component: AudioComponent,
-            description: *const AudioComponentDescription,
-        ) -> AudioComponent;
-
-        pub fn AudioComponentInstanceNew(
-            component: AudioComponent,
-            out_instance: *mut AudioComponentInstance,
-        ) -> OSStatus;
-
-        pub fn AudioComponentInstanceDispose(instance: AudioComponentInstance) -> OSStatus;
-
-        pub fn AudioUnitSetProperty(
-            unit: AudioUnit,
-            property_id: u32,
-            scope: u32,
-            element: u32,
-            data: *const c_void,
-            data_size: u32,
-        ) -> OSStatus;
-
-        pub fn AudioUnitGetProperty(
-            unit: AudioUnit,
-            property_id: u32,
-            scope: u32,
-            element: u32,
-            data: *mut c_void,
             data_size: *mut u32,
+            data: *mut c_void,
         ) -> OSStatus;
 
-        pub fn AudioUnitInitialize(unit: AudioUnit) -> OSStatus;
-        pub fn AudioUnitUninitialize(unit: AudioUnit) -> OSStatus;
-        pub fn AudioOutputUnitStart(unit: AudioUnit) -> OSStatus;
-        pub fn AudioOutputUnitStop(unit: AudioUnit) -> OSStatus;
-
-        pub fn AudioUnitRender(
-            unit: AudioUnit,
-            io_action_flags: *mut u32,
-            in_time_stamp: *const AudioTimeStamp,
-            in_output_bus_number: u32,
-            in_number_frames: u32,
-            io_data: *mut AudioBufferList,
+        pub fn AudioDeviceCreateIOProcIDWithBlock(
+            out_io_proc_id: *mut AudioDeviceIOProcID,
+            device_id: AudioDeviceID,
+            dispatch_queue: *mut c_void,
+            io_block: *const c_void,
         ) -> OSStatus;
 
-        // macOS 15+ AudioHardwareCreateProcessTap
-        pub fn AudioHardwareCreateProcessTap(
-            tap_description: *const c_void, // CATapDescription*
-            out_tap_id: *mut AudioObjectID,
+        pub fn AudioDeviceDestroyIOProcID(
+            device: AudioDeviceID,
+            io_proc_id: AudioDeviceIOProcID,
         ) -> OSStatus;
 
-        pub fn AudioHardwareDestroyProcessTap(tap_id: AudioObjectID) -> OSStatus;
+        pub fn AudioDeviceStart(
+            device: AudioDeviceID,
+            io_proc_id: AudioDeviceIOProcID,
+        ) -> OSStatus;
+
+        pub fn AudioDeviceStop(
+            device: AudioDeviceID,
+            io_proc_id: AudioDeviceIOProcID,
+        ) -> OSStatus;
+    }
+
+    extern "C" {
+        pub fn dispatch_queue_create(
+            label: *const std::os::raw::c_char,
+            attr: *const c_void,
+        ) -> *mut c_void;
+
+        pub fn dispatch_release(object: *mut c_void);
+
+        // Block class — take address to get the class pointer
+        pub static _NSConcreteStackBlock: c_void;
     }
 }
 
-/// Context passed to the audio render callback.
+// ── Raw Objective-C Block ABI ──
+
+#[repr(C)]
+struct BlockDescriptor {
+    reserved: u64,
+    size: u64,
+}
+
+#[repr(C)]
+struct IOBlock {
+    isa: *const c_void,
+    flags: i32,
+    reserved: i32,
+    invoke: unsafe extern "C" fn(
+        block: *const IOBlock,
+        in_now: *const c_void,
+        in_input_data: *const c_void,
+        in_input_time: *const c_void,
+        out_output_data: *mut c_void,
+        in_output_time: *const c_void,
+    ) -> i32,
+    descriptor: *const BlockDescriptor,
+    ctx_ptr: *mut CallbackContext,
+}
+
+static BLOCK_DESCRIPTOR: BlockDescriptor = BlockDescriptor {
+    reserved: 0,
+    size: std::mem::size_of::<IOBlock>() as u64,
+};
+
+unsafe extern "C" fn block_invoke(
+    block: *const IOBlock,
+    _in_now: *const c_void,
+    in_input_data: *const c_void,
+    _in_input_time: *const c_void,
+    _out_output_data: *mut c_void,
+    _in_output_time: *const c_void,
+) -> i32 {
+    let ctx = &mut *(*block).ctx_ptr;
+    process_audio_buffer(in_input_data, ctx);
+    0
+}
+
 struct CallbackContext {
     producer: HeapProd<f32>,
     channels: u32,
 }
 
-/// The audio render callback. Called on the real-time audio thread.
-/// MUST NOT allocate, lock, or block.
-unsafe extern "C" fn render_callback(
-    in_ref_con: *mut std::os::raw::c_void,
-    _io_action_flags: *mut u32,
-    _in_time_stamp: *const ffi::AudioTimeStamp,
-    _in_bus_number: u32,
-    in_number_frames: u32,
-    io_data: *mut ffi::AudioBufferList,
-) -> ffi::OSStatus {
-    let ctx = &mut *(in_ref_con as *mut CallbackContext);
+unsafe fn process_audio_buffer(input_data: *const c_void, ctx: &mut CallbackContext) {
+    static CALLBACK_COUNT: AtomicU32 = AtomicU32::new(0);
 
-    if io_data.is_null() {
-        return 0;
+    if input_data.is_null() {
+        return;
     }
 
-    let buffer_list = &*io_data;
+    let buffer_list = &*(input_data as *const ffi::AudioBufferList);
     if buffer_list.number_buffers == 0 {
-        return 0;
+        return;
     }
 
-    // Read from first buffer (interleaved or mono)
-    let buffer = &buffer_list.buffers[0];
-    let num_samples = buffer.data_byte_size as usize / std::mem::size_of::<f32>();
+    let buf = &buffer_list.buffers[0];
+    if buf.data.is_null() || buf.data_byte_size == 0 {
+        return;
+    }
 
-    if !buffer.data.is_null() && num_samples > 0 {
-        let samples = std::slice::from_raw_parts(buffer.data as *const f32, num_samples);
+    let num_samples = buf.data_byte_size as usize / std::mem::size_of::<f32>();
+    let samples = std::slice::from_raw_parts(buf.data as *const f32, num_samples);
 
-        // Downmix to mono if stereo
-        if ctx.channels >= 2 {
-            for chunk in samples.chunks(ctx.channels as usize) {
-                let mono = chunk.iter().sum::<f32>() / ctx.channels as f32;
-                let _ = ctx.producer.try_push(mono);
-            }
-        } else {
-            for &sample in samples {
-                let _ = ctx.producer.try_push(sample);
-            }
+    let count = CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+    if count < 5 {
+        let max_val = samples.iter().map(|s| s.abs()).fold(0.0f32, f32::max);
+        log::debug!(
+            "IOProc #{}: buffers={}, ch={}, bytes={}, samples={}, max={:.6}",
+            count, buffer_list.number_buffers, buf.number_channels,
+            buf.data_byte_size, num_samples, max_val,
+        );
+    }
+
+    if ctx.channels >= 2 {
+        for chunk in samples.chunks(ctx.channels as usize) {
+            let mono = chunk.iter().sum::<f32>() / ctx.channels as f32;
+            let _ = ctx.producer.try_push(mono);
+        }
+    } else {
+        for &sample in samples {
+            let _ = ctx.producer.try_push(sample);
         }
     }
+}
 
-    0
+fn get_default_output_device() -> Result<ffi::AudioDeviceID> {
+    let mut device_id: ffi::AudioDeviceID = 0;
+    let mut data_size = std::mem::size_of::<ffi::AudioDeviceID>() as u32;
+    let address = ffi::AudioObjectPropertyAddress {
+        selector: ffi::kAudioHardwarePropertyDefaultOutputDevice,
+        scope: ffi::kAudioObjectPropertyScopeGlobal,
+        element: ffi::kAudioObjectPropertyElementMain,
+    };
+    let status = unsafe {
+        ffi::AudioObjectGetPropertyData(
+            ffi::kAudioObjectSystemObject, &address, 0, std::ptr::null(),
+            &mut data_size, &mut device_id as *mut _ as *mut _,
+        )
+    };
+    if status != 0 {
+        return Err(anyhow!("Failed to get default output device: {}", status));
+    }
+    log::debug!("Default output device ID: {}", device_id);
+    Ok(device_id)
+}
+
+fn get_device_uid(device_id: ffi::AudioDeviceID) -> Result<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::string::CFString;
+
+    let address = ffi::AudioObjectPropertyAddress {
+        selector: ffi::kAudioDevicePropertyDeviceUID,
+        scope: ffi::kAudioObjectPropertyScopeGlobal,
+        element: ffi::kAudioObjectPropertyElementMain,
+    };
+    let mut uid_ref: core_foundation::string::CFStringRef = std::ptr::null();
+    let mut data_size = std::mem::size_of::<core_foundation::string::CFStringRef>() as u32;
+    let status = unsafe {
+        ffi::AudioObjectGetPropertyData(
+            device_id, &address, 0, std::ptr::null(),
+            &mut data_size, &mut uid_ref as *mut _ as *mut _,
+        )
+    };
+    if status != 0 {
+        return Err(anyhow!("Failed to get device UID for {}: {}", device_id, status));
+    }
+    let cf_string: CFString = unsafe { CFString::wrap_under_get_rule(uid_ref) };
+    let uid = cf_string.to_string();
+    log::debug!("Device {} UID: {}", device_id, uid);
+    Ok(uid)
 }
 
 pub struct AudioTap {
-    audio_unit: ffi::AudioUnit,
-    tap_id: Option<ffi::AudioObjectID>,
-    _callback_context: Box<CallbackContext>,
+    tap_id: ffi::AudioObjectID,
+    aggregate_device_id: ffi::AudioDeviceID,
+    io_proc_id: ffi::AudioDeviceIOProcID,
+    dispatch_queue: *mut c_void,
+    _block: Box<IOBlock>,
+    _callback_context: *mut CallbackContext,
     config: AudioConfig,
 }
 
-// Safety: AudioUnit is accessed only from this struct's methods and the callback.
-// The callback context is pinned in a Box and referenced by pointer.
 unsafe impl Send for AudioTap {}
 
 impl AudioTap {
-    /// Create and start an audio tap on system audio output.
     pub fn new(producer: HeapProd<f32>, config: AudioConfig) -> Result<Self> {
         unsafe { Self::create_tap(producer, config) }
     }
 
     unsafe fn create_tap(producer: HeapProd<f32>, config: AudioConfig) -> Result<Self> {
-        // 1. Create CATapDescription via Objective-C runtime
-        use objc2::runtime::{AnyClass, AnyObject};
         use objc2::msg_send;
+        use objc2::runtime::{AnyClass, AnyObject};
 
+        // ── Step 1: CATapDescription with UUID ──
         let tap_desc_class = AnyClass::get(c"CATapDescription")
-            .ok_or_else(|| anyhow!(
-                "CATapDescription class not found. Requires macOS 15+."
-            ))?;
+            .ok_or_else(|| anyhow!("CATapDescription class not found. Requires macOS 15+."))?;
 
-        // +[CATapDescription alloc] then -[CATapDescription initStereoGlobalTapButExcludeProcesses:]
         let tap_desc: *mut AnyObject = msg_send![tap_desc_class, alloc];
-        // Create an empty NSArray for the exclusion list
         let nsarray_class = AnyClass::get(c"NSArray")
             .ok_or_else(|| anyhow!("NSArray class not found"))?;
         let empty_array: *mut AnyObject = msg_send![nsarray_class, array];
-        let tap_desc: *mut AnyObject = msg_send![tap_desc, initStereoGlobalTapButExcludeProcesses: empty_array];
-
+        let tap_desc: *mut AnyObject =
+            msg_send![tap_desc, initStereoGlobalTapButExcludeProcesses: empty_array];
         if tap_desc.is_null() {
             return Err(anyhow!("Failed to create CATapDescription"));
         }
 
-        // 2. Create the process tap
+        let nsuuid_class = AnyClass::get(c"NSUUID")
+            .ok_or_else(|| anyhow!("NSUUID class not found"))?;
+        let tap_uuid: *mut AnyObject = msg_send![nsuuid_class, alloc];
+        let tap_uuid: *mut AnyObject = msg_send![tap_uuid, init];
+        let _: () = msg_send![tap_desc, setUUID: tap_uuid];
+        let uuid_nsstring: *mut AnyObject = msg_send![tap_uuid, UUIDString];
+        let _: () = msg_send![tap_desc, setMuteBehavior: 0i64];
+
+        // ── Step 2: Process tap ──
         let mut tap_id: ffi::AudioObjectID = 0;
-        let status = ffi::AudioHardwareCreateProcessTap(
-            tap_desc as *const _,
-            &mut tap_id,
-        );
+        let status = ffi::AudioHardwareCreateProcessTap(tap_desc as *const _, &mut tap_id);
         if status != 0 {
             return Err(anyhow!(
-                "AudioHardwareCreateProcessTap failed with status {}. \
-                 Make sure you've granted audio capture permissions.",
-                status
+                "AudioHardwareCreateProcessTap failed: {}. Requires macOS 15+.", status
             ));
         }
+        log::debug!("Created process tap with ID {}", tap_id);
 
-        // 3. Create AUHAL AudioUnit
-        let desc = ffi::AudioComponentDescription {
-            component_type: ffi::kAudioUnitType_Output,
-            component_sub_type: ffi::kAudioUnitSubType_HALOutput,
-            component_manufacturer: ffi::kAudioUnitManufacturer_Apple,
-            component_flags: 0,
-            component_flags_mask: 0,
-        };
+        // ── Step 3: Output device UID ──
+        let output_device_id = get_default_output_device()?;
+        let output_uid = get_device_uid(output_device_id)?;
 
-        let component = ffi::AudioComponentFindNext(std::ptr::null_mut(), &desc);
-        if component.is_null() {
-            ffi::AudioHardwareDestroyProcessTap(tap_id);
-            return Err(anyhow!("Could not find HAL output AudioComponent"));
-        }
+        // ── Step 4: Aggregate device ──
+        let aggregate_uid = uuid::Uuid::new_v4().to_string();
+        let aggregate_device_id =
+            Self::create_aggregate_device(&output_uid, &aggregate_uid, uuid_nsstring)?;
+        log::debug!("Created aggregate device with ID {}", aggregate_device_id);
 
-        let mut audio_unit: ffi::AudioUnit = std::ptr::null_mut();
-        let status = ffi::AudioComponentInstanceNew(component, &mut audio_unit);
-        if status != 0 {
-            ffi::AudioHardwareDestroyProcessTap(tap_id);
-            return Err(anyhow!("AudioComponentInstanceNew failed: {}", status));
-        }
-
-        // 4. Enable input on the AUHAL (bus 1) and disable output (bus 0)
-        let enable: u32 = 1;
-        let disable: u32 = 0;
-        ffi::AudioUnitSetProperty(
-            audio_unit,
-            ffi::kAudioOutputUnitProperty_EnableIO,
-            ffi::kAudioUnitScope_Input,
-            1, // input bus
-            &enable as *const _ as *const _,
-            std::mem::size_of::<u32>() as u32,
-        );
-        ffi::AudioUnitSetProperty(
-            audio_unit,
-            ffi::kAudioOutputUnitProperty_EnableIO,
-            ffi::kAudioUnitScope_Output,
-            0, // output bus
-            &disable as *const _ as *const _,
-            std::mem::size_of::<u32>() as u32,
-        );
-
-        // 5. Set the tap's aggregate device as the input device
-        ffi::AudioUnitSetProperty(
-            audio_unit,
-            ffi::kAudioOutputUnitProperty_CurrentDevice,
-            ffi::kAudioUnitScope_Global,
-            0,
-            &tap_id as *const _ as *const _,
-            std::mem::size_of::<ffi::AudioDeviceID>() as u32,
-        );
-
-        // 6. Set stream format to float32, interleaved
-        let format = ffi::AudioStreamBasicDescription {
-            sample_rate: config.sample_rate as f64,
-            format_id: ffi::kAudioFormatLinearPCM,
-            format_flags: ffi::kAudioFormatFlagIsFloat | ffi::kAudioFormatFlagIsPacked,
-            bytes_per_packet: 4 * config.channels,
-            frames_per_packet: 1,
-            bytes_per_frame: 4 * config.channels,
-            channels_per_frame: config.channels,
-            bits_per_channel: 32,
-            reserved: 0,
-        };
-        ffi::AudioUnitSetProperty(
-            audio_unit,
-            ffi::kAudioUnitProperty_StreamFormat,
-            ffi::kAudioUnitScope_Output, // output scope of input bus
-            1,
-            &format as *const _ as *const _,
-            std::mem::size_of::<ffi::AudioStreamBasicDescription>() as u32,
-        );
-
-        // 7. Set render callback
-        let callback_context = Box::new(CallbackContext {
+        // ── Step 5: IOProc ──
+        let ctx_ptr = Box::into_raw(Box::new(CallbackContext {
             producer,
             channels: config.channels,
+        }));
+
+        let io_block = Box::new(IOBlock {
+            isa: &ffi::_NSConcreteStackBlock as *const c_void,
+            flags: 0,
+            reserved: 0,
+            invoke: block_invoke,
+            descriptor: &BLOCK_DESCRIPTOR,
+            ctx_ptr,
         });
-        let callback_struct = ffi::AURenderCallbackStruct {
-            input_proc: render_callback,
-            input_proc_ref_con: &*callback_context as *const _ as *mut _,
-        };
-        let status = ffi::AudioUnitSetProperty(
-            audio_unit,
-            ffi::kAudioUnitProperty_SetRenderCallback,
-            ffi::kAudioUnitScope_Output,
-            1, // input bus
-            &callback_struct as *const _ as *const _,
-            std::mem::size_of::<ffi::AURenderCallbackStruct>() as u32,
+
+        let queue_label = c"com.terminal-vibes.audio";
+        let dispatch_queue = ffi::dispatch_queue_create(queue_label.as_ptr(), std::ptr::null());
+
+        let mut io_proc_id: ffi::AudioDeviceIOProcID = std::ptr::null_mut();
+        let status = ffi::AudioDeviceCreateIOProcIDWithBlock(
+            &mut io_proc_id,
+            aggregate_device_id,
+            dispatch_queue,
+            &*io_block as *const IOBlock as *const c_void,
         );
         if status != 0 {
-            ffi::AudioComponentInstanceDispose(audio_unit);
+            let _ = Box::from_raw(ctx_ptr);
+            ffi::AudioHardwareDestroyAggregateDevice(aggregate_device_id);
             ffi::AudioHardwareDestroyProcessTap(tap_id);
-            return Err(anyhow!("Failed to set render callback: {}", status));
+            ffi::dispatch_release(dispatch_queue);
+            return Err(anyhow!("AudioDeviceCreateIOProcIDWithBlock failed: {}", status));
         }
+        log::debug!("Created IOProc block on aggregate device");
 
-        // 8. Initialize and start
-        let status = ffi::AudioUnitInitialize(audio_unit);
+        let status = ffi::AudioDeviceStart(aggregate_device_id, io_proc_id);
         if status != 0 {
-            ffi::AudioComponentInstanceDispose(audio_unit);
+            let _ = Box::from_raw(ctx_ptr);
+            ffi::AudioDeviceDestroyIOProcID(aggregate_device_id, io_proc_id);
+            ffi::AudioHardwareDestroyAggregateDevice(aggregate_device_id);
             ffi::AudioHardwareDestroyProcessTap(tap_id);
-            return Err(anyhow!("AudioUnitInitialize failed: {}", status));
+            ffi::dispatch_release(dispatch_queue);
+            return Err(anyhow!("AudioDeviceStart failed: {}", status));
         }
 
-        let status = ffi::AudioOutputUnitStart(audio_unit);
-        if status != 0 {
-            ffi::AudioUnitUninitialize(audio_unit);
-            ffi::AudioComponentInstanceDispose(audio_unit);
-            ffi::AudioHardwareDestroyProcessTap(tap_id);
-            return Err(anyhow!("AudioOutputUnitStart failed: {}", status));
-        }
-
-        log::info!("Audio tap started (tap_id={}, sample_rate={})", tap_id, config.sample_rate);
+        log::info!(
+            "Audio tap started (tap_id={}, aggregate_device={}, sample_rate={})",
+            tap_id, aggregate_device_id, config.sample_rate
+        );
 
         Ok(Self {
-            audio_unit,
-            tap_id: Some(tap_id),
-            _callback_context: callback_context,
+            tap_id,
+            aggregate_device_id,
+            io_proc_id,
+            dispatch_queue,
+            _block: io_block,
+            _callback_context: ctx_ptr,
             config,
         })
     }
 
+    unsafe fn create_aggregate_device(
+        output_uid: &str,
+        aggregate_uid: &str,
+        tap_uuid_nsstring: *mut objc2::runtime::AnyObject,
+    ) -> Result<ffi::AudioDeviceID> {
+        use core_foundation::base::TCFType;
+        use core_foundation::boolean::CFBoolean;
+        use core_foundation::dictionary::CFDictionary;
+        use core_foundation::string::CFString;
+
+        let v_output_uid = CFString::new(output_uid);
+
+        let sub_device_dict = CFDictionary::from_CFType_pairs(&[(
+            CFString::from_static_string("uid").as_CFType(),
+            v_output_uid.as_CFType(),
+        )]);
+        let sub_device_array =
+            core_foundation::array::CFArray::from_CFTypes(&[sub_device_dict.as_CFType()]);
+
+        let uuid_cf = CFString::wrap_under_get_rule(
+            tap_uuid_nsstring as core_foundation::string::CFStringRef,
+        );
+
+        let tap_dict = CFDictionary::from_CFType_pairs(&[
+            (CFString::from_static_string("uid").as_CFType(), uuid_cf.as_CFType()),
+            (CFString::from_static_string("drift").as_CFType(), CFBoolean::true_value().as_CFType()),
+        ]);
+        let tap_array =
+            core_foundation::array::CFArray::from_CFTypes(&[tap_dict.as_CFType()]);
+
+        let description = CFDictionary::from_CFType_pairs(&[
+            (CFString::from_static_string("name").as_CFType(), CFString::new("terminal-vibes-tap").as_CFType()),
+            (CFString::from_static_string("uid").as_CFType(), CFString::new(aggregate_uid).as_CFType()),
+            (CFString::from_static_string("master").as_CFType(), v_output_uid.as_CFType()),
+            (CFString::from_static_string("private").as_CFType(), CFBoolean::true_value().as_CFType()),
+            (CFString::from_static_string("stacked").as_CFType(), CFBoolean::false_value().as_CFType()),
+            (CFString::from_static_string("tapautostart").as_CFType(), CFBoolean::true_value().as_CFType()),
+            (CFString::from_static_string("subdevices").as_CFType(), sub_device_array.as_CFType()),
+            (CFString::from_static_string("taps").as_CFType(), tap_array.as_CFType()),
+        ]);
+
+        let mut aggregate_device_id: ffi::AudioDeviceID = 0;
+        let status = ffi::AudioHardwareCreateAggregateDevice(
+            description.as_concrete_TypeRef() as *const _,
+            &mut aggregate_device_id,
+        );
+        if status != 0 {
+            return Err(anyhow!("AudioHardwareCreateAggregateDevice failed: {}", status));
+        }
+        Ok(aggregate_device_id)
+    }
+
     pub fn config(&self) -> &AudioConfig {
         &self.config
+    }
+
+    pub fn aggregate_device_id(&self) -> ffi::AudioDeviceID {
+        self.aggregate_device_id
     }
 }
 
 impl Drop for AudioTap {
     fn drop(&mut self) {
         unsafe {
-            ffi::AudioOutputUnitStop(self.audio_unit);
-            ffi::AudioUnitUninitialize(self.audio_unit);
-            ffi::AudioComponentInstanceDispose(self.audio_unit);
-            if let Some(tap_id) = self.tap_id {
-                ffi::AudioHardwareDestroyProcessTap(tap_id);
-                log::info!("Audio tap destroyed (tap_id={})", tap_id);
-            }
+            let _ = ffi::AudioDeviceStop(self.aggregate_device_id, self.io_proc_id);
+            let _ = ffi::AudioDeviceDestroyIOProcID(self.aggregate_device_id, self.io_proc_id);
+            let _ = ffi::AudioHardwareDestroyAggregateDevice(self.aggregate_device_id);
+            ffi::AudioHardwareDestroyProcessTap(self.tap_id);
+            ffi::dispatch_release(self.dispatch_queue);
+            let _ = Box::from_raw(self._callback_context);
+            log::info!(
+                "Audio tap destroyed (tap_id={}, aggregate_device={})",
+                self.tap_id, self.aggregate_device_id
+            );
         }
     }
 }
