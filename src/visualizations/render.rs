@@ -11,7 +11,7 @@ use ratatui::style::Color;
 pub fn quantize_color(color: Color) -> Color {
     match color {
         Color::Rgb(r, g, b) => {
-            const STEP: u8 = 4;
+            const STEP: u8 = 16;
             Color::Rgb((r / STEP) * STEP, (g / STEP) * STEP, (b / STEP) * STEP)
         }
         other => other,
@@ -189,6 +189,9 @@ impl HalfBlockCanvas {
 
                 let cell = &mut buf[(area.x + cx, area.y + cy)];
                 match (top, bot) {
+                    (Some(tc), Some(bc)) if tc == bc => {
+                        cell.set_char('\u{2588}').set_fg(tc);
+                    }
                     (Some(tc), Some(bc)) => {
                         cell.set_char('\u{2580}').set_fg(tc).set_bg(bc);
                     }

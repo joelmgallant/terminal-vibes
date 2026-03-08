@@ -72,6 +72,10 @@ impl Visualization for Plasma {
         self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.06;
     }
 
+    fn heavy_rendering(&self) -> bool {
+        true
+    }
+
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

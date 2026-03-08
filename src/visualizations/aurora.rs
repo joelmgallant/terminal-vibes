@@ -144,7 +144,8 @@ impl Visualization for Aurora {
 
             // Write blended colors to canvas
             for (py, &(r, g, b)) in self.column_colors.iter().enumerate() {
-                if r > 1.0 || g > 1.0 || b > 1.0 {
+                // Skip pixels that would quantize to invisible black (matches STEP=16)
+                if r.max(g).max(b) > 16.0 {
                     let color =
                         Color::Rgb((r as u8).min(255), (g as u8).min(255), (b as u8).min(255));
                     self.canvas.set(px, py, color);
@@ -153,6 +154,10 @@ impl Visualization for Aurora {
         }
 
         self.canvas.render(&area, buf);
+    }
+
+    fn heavy_rendering(&self) -> bool {
+        true
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

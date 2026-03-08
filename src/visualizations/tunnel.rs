@@ -139,6 +139,10 @@ impl Visualization for Tunnel {
         self.time += 0.016;
     }
 
+    fn heavy_rendering(&self) -> bool {
+        true
+    }
+
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

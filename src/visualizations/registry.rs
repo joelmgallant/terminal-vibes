@@ -87,6 +87,10 @@ impl VisualizationRegistry {
         self.current().map(|v| v.name())
     }
 
+    pub fn current_heavy_rendering(&self) -> bool {
+        self.current().map(|v| v.heavy_rendering()).unwrap_or(false)
+    }
+
     pub fn select_by_name(&mut self, name: &str) {
         if let Some(idx) = self.plugins.iter().position(|v| v.name() == name) {
             self.current_index = idx;

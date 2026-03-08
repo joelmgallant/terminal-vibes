@@ -40,6 +40,7 @@ https://github.com/user-attachments/assets/f05ef7fd-fa78-4616-abf4-30affbe15c41
 - **macOS 15+** (Sequoia) — uses the `AudioProcessTap` API for system audio capture
 - Rust toolchain (1.70+)
 - Terminal with true color support recommended
+- **tmux/byobu users:** enable true color passthrough (see [Terminal Multiplexers](#terminal-multiplexers))
 
 ## Install
 
@@ -209,6 +210,26 @@ Terminal-vibes runs a three-thread pipeline:
 3. **Rendering** — The main thread runs a ratatui event loop at 30 FPS, drawing the active visualization to the terminal
 
 The threads communicate via lock-free data structures (SPSC ring buffer, bounded channel) so the audio callback never blocks.
+
+## Terminal Multiplexers
+
+When running inside **tmux** or **byobu**, you must enable true color (RGB) passthrough. Without this, tmux converts RGB escape sequences to 256-color, which can cause crashes or severe slowdown with color-intensive visualizations (plasma, aurora, spectrogram, tunnel).
+
+Add to your `~/.tmux.conf` (or byobu `profile.tmux`):
+
+```bash
+# Required: true color passthrough (prevents RGB-to-256color conversion crashes)
+set -ga terminal-overrides ',xterm-256color:Tc'
+
+# Required: focus events (lets terminal-vibes pause rendering when pane is inactive)
+set -g focus-events on
+```
+
+Then reload: `tmux source-file ~/.tmux.conf`
+
+terminal-vibes auto-detects tmux (`$TMUX` env var) and caps the frame rate at 30 FPS to keep escape sequence volume manageable. Full-screen color visualizations (plasma, aurora, tunnel) are marked as heavy renderers and **automatically pause when the pane loses focus**, preventing escape sequence floods during pane switching. Lightweight visualizations (spectrum, waveform, starfield, etc.) keep rendering normally in inactive panes.
+
+This requires `focus-events on` in your tmux config.
 
 ## License
 

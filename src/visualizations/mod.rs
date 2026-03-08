@@ -31,6 +31,13 @@ pub trait Visualization: Send {
         false
     }
 
+    /// Whether this visualization generates heavy escape sequence volume
+    /// (e.g. full-screen dual-RGB HalfBlockCanvas). When true, rendering
+    /// pauses automatically when the terminal pane loses focus.
+    fn heavy_rendering(&self) -> bool {
+        false
+    }
+
     /// Provide default config for this visualization.
     fn default_config(&self) -> toml::Value {
         toml::Value::Table(Default::default())

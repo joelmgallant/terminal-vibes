@@ -3,7 +3,9 @@ use crate::processing::FrameData;
 use crate::visualizations::registry::VisualizationRegistry;
 use anyhow::Result;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{
+        self, DisableFocusChange, EnableFocusChange, Event, KeyCode, KeyEvent, KeyModifiers,
+    },
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
@@ -67,18 +69,43 @@ impl App {
     pub fn run(&mut self, frame_rx: Receiver<FrameData>) -> Result<()> {
         enable_raw_mode()?;
         stdout().execute(EnterAlternateScreen)?;
+        stdout().execute(EnableFocusChange)?;
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
-        let frame_duration = Duration::from_millis(1000 / self.config.display.fps.max(1) as u64);
+        // Auto-detect tmux and cap FPS to avoid overwhelming the terminal
+        // multiplexer with escape sequences from color-intensive visualizations.
+        let effective_fps = if std::env::var("TMUX").is_ok() {
+            self.config.display.fps.min(30)
+        } else {
+            self.config.display.fps
+        };
+        let frame_duration = Duration::from_millis(1000 / effective_fps.max(1) as u64);
         let mut last_frame = FrameData::default();
         let mut display_frame = FrameData::default();
+        let mut focused = true;
 
         while self.running.load(Ordering::Relaxed) {
             let loop_start = Instant::now();
 
-            // Drain the channel, keep latest frame
+            // Drain the channel, keep latest frame (always drain to prevent backpressure)
             while let Ok(frame) = frame_rx.try_recv() {
                 last_frame = frame;
+            }
+
+            // When unfocused and the current visualization is heavy (full-screen
+            // dual-RGB HalfBlockCanvas), skip rendering to avoid flooding tmux with
+            // escape sequences. Lightweight visualizations keep rendering normally.
+            if !focused && self.registry.current_heavy_rendering() {
+                if event::poll(frame_duration)? {
+                    match event::read()? {
+                        Event::FocusGained => focused = true,
+                        Event::Key(key) => {
+                            self.handle_key(key);
+                        }
+                        _ => {}
+                    }
+                }
+                continue;
             }
 
             // Scale spectrum by sensitivity (reuses existing Vec capacity via clone_from)
@@ -170,11 +197,16 @@ impl App {
             // Handle input
             let poll_timeout = frame_duration.saturating_sub(loop_start.elapsed());
             if event::poll(poll_timeout)? {
-                if let Event::Key(key) = event::read()? {
-                    if !self.handle_key(key) {
-                        // Forward to current visualization
-                        self.registry.on_key_current(key);
+                match event::read()? {
+                    Event::Key(key) => {
+                        if !self.handle_key(key) {
+                            // Forward to current visualization
+                            self.registry.on_key_current(key);
+                        }
                     }
+                    Event::FocusLost => focused = false,
+                    Event::FocusGained => focused = true,
+                    _ => {}
                 }
             }
         }
@@ -182,6 +214,7 @@ impl App {
         // Save state before cleanup
         self.save_state();
 
+        stdout().execute(DisableFocusChange)?;
         disable_raw_mode()?;
         stdout().execute(LeaveAlternateScreen)?;
         Ok(())
