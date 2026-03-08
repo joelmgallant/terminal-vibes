@@ -124,6 +124,8 @@ mod ffi {
     // CATapDescription for macOS 15+
     // This is an Objective-C class. We interact via objc runtime.
 
+    #[link(name = "AudioToolbox", kind = "framework")]
+    #[link(name = "CoreAudio", kind = "framework")]
     extern "C" {
         pub fn AudioObjectGetPropertyDataSize(
             object_id: AudioObjectID,

@@ -1,4 +1,13 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
+use clap::Parser;
+use ringbuf::HeapRb;
+use ringbuf::traits::{Consumer, Split};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 mod audio;
 mod config;
@@ -6,8 +15,104 @@ mod processing;
 mod ui;
 mod visualizations;
 
+use audio::{AudioConfig, AudioTap};
+use config::Config;
+use processing::{FrameData, Processor, ProcessorConfig};
+use ui::App;
+use visualizations::registry::VisualizationRegistry;
+use visualizations::spectrogram::Spectrogram;
+use visualizations::spectrum::SpectrumBars;
+use visualizations::waveform::Waveform;
+
+#[derive(Parser)]
+#[command(name = "terminal-vibes", about = "Terminal-based music visualizer")]
+struct Cli {
+    /// Path to config file
+    #[arg(long)]
+    config: Option<PathBuf>,
+
+    /// List available visualization modes
+    #[arg(long)]
+    list_modes: bool,
+}
+
 fn main() -> Result<()> {
     env_logger::init();
-    println!("terminal-vibes");
+    let cli = Cli::parse();
+
+    if cli.list_modes {
+        println!("Available visualization modes:");
+        println!("  spectrum    - Frequency spectrum bars");
+        println!("  waveform    - Oscilloscope waveform");
+        println!("  spectrogram - Scrolling frequency heatmap");
+        return Ok(());
+    }
+
+    let config = Config::load(cli.config.as_ref())
+        .context("Failed to load config")?;
+
+    // Set up ring buffer
+    let rb = HeapRb::<f32>::new(config.audio.buffer_size);
+    let (producer, mut consumer) = rb.split();
+
+    // Set up audio tap
+    let audio_config = AudioConfig {
+        sample_rate: 44100.0,
+        buffer_size: config.audio.buffer_size,
+        channels: 2,
+    };
+    let _audio_tap = AudioTap::new(producer, audio_config.clone())
+        .context(
+            "Failed to start audio capture. \
+             Make sure you're on macOS 15+ and have granted audio permissions."
+        )?;
+
+    // Set up visualization registry
+    let mut registry = VisualizationRegistry::new();
+    registry.register(Box::new(SpectrumBars::new()));
+    registry.register(Box::new(Waveform::new()));
+    registry.register(Box::new(Spectrogram::new(200)));
+
+    // Set up processing -> UI channel
+    let (frame_tx, frame_rx) = mpsc::sync_channel::<FrameData>(2);
+
+    let running = Arc::new(AtomicBool::new(true));
+    let running_processor = running.clone();
+
+    // Spawn processor thread
+    let fft_size = config.audio.fft_size;
+    let smoothing = config.audio.smoothing;
+    let processor_handle = thread::spawn(move || {
+        let mut processor = Processor::new(ProcessorConfig {
+            fft_size,
+            sample_rate: audio_config.sample_rate,
+            smoothing,
+            num_bands: 64,
+            db_floor: -60.0,
+        });
+
+        let mut sample_buf = vec![0.0_f32; fft_size];
+        let interval = Duration::from_millis(1000 / 60); // ~60 Hz
+
+        while running_processor.load(Ordering::Relaxed) {
+            // Read available samples from ring buffer
+            let count = consumer.pop_slice(&mut sample_buf);
+            if count >= fft_size {
+                let frame = processor.process(&sample_buf[..fft_size]);
+                let _ = frame_tx.try_send(frame);
+            }
+
+            thread::sleep(interval);
+        }
+    });
+
+    // Run UI on main thread
+    let mut app = App::new(registry, config, running.clone());
+    app.run(frame_rx)?;
+
+    // Clean shutdown
+    running.store(false, Ordering::Relaxed);
+    let _ = processor_handle.join();
+
     Ok(())
 }
