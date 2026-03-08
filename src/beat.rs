@@ -55,8 +55,8 @@ impl Default for BeatDetectionConfig {
     fn default() -> Self {
         Self {
             envelope_decay: 0.95,
-            cooldown_frames: 4,
-            flux_sensitivity: 2.0,
+            cooldown_frames: 8,
+            flux_sensitivity: 3.0,
             flux_history_frames: 30,
             energy_floor: 0.001,
         }
