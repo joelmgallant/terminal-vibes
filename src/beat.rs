@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 /// Beat detection output data, attached to each `FrameData`.
 #[derive(Debug, Clone)]
 pub struct BeatData {
@@ -46,11 +44,8 @@ impl Default for BeatData {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default)]
 pub struct BeatDetectionConfig {
-    pub sensitivity: f32,
-    pub variance_scale: f32,
     pub envelope_decay: f32,
     pub cooldown_frames: usize,
-    pub history_frames: usize,
     pub flux_sensitivity: f32,
     pub flux_history_frames: usize,
     pub energy_floor: f32,
@@ -59,11 +54,8 @@ pub struct BeatDetectionConfig {
 impl Default for BeatDetectionConfig {
     fn default() -> Self {
         Self {
-            sensitivity: 1.2,
-            variance_scale: 0.4,
             envelope_decay: 0.95,
             cooldown_frames: 4,
-            history_frames: 43,
             flux_sensitivity: 2.0,
             flux_history_frames: 30,
             energy_floor: 0.001,
