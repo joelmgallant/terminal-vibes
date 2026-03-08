@@ -50,9 +50,11 @@ pub struct TempoData {
     pub bpm: f32,
     /// Confidence in the estimate (0.0..1.0)
     pub confidence: f32,
-    /// Beat phase (0.0..1.0) — 0.0 at beat, rises to 1.0 at next beat
+    /// Beat phase (0.0..1.0) — 0.0 at beat, rises to 1.0 at next beat (used by visualizations)
+    #[allow(dead_code)]
     pub phase: f32,
-    /// Predicted beat this frame (phase wrapped past 1.0 with high confidence)
+    /// Predicted beat this frame (phase wrapped past 1.0 with high confidence, used by visualizations)
+    #[allow(dead_code)]
     pub predicted_beat: bool,
 }
 
@@ -227,6 +229,7 @@ impl TempoEstimator {
         }
     }
 
+    #[cfg(test)]
     fn onset_len(&self) -> usize {
         self.onset_len
     }
