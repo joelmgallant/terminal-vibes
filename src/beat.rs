@@ -41,7 +41,8 @@ impl Default for BeatData {
 }
 
 /// Configuration for beat detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(default)]
 pub struct BeatDetectionConfig {
     pub sensitivity: f32,
     pub variance_scale: f32,

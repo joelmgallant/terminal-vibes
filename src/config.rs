@@ -1,3 +1,4 @@
+use crate::beat::BeatDetectionConfig;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -7,6 +8,7 @@ pub struct Config {
     pub audio: AudioConfig,
     pub display: DisplayConfig,
     pub keybindings: KeybindingsConfig,
+    pub beat_detection: BeatDetectionConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +44,7 @@ impl Default for Config {
             audio: AudioConfig::default(),
             display: DisplayConfig::default(),
             keybindings: KeybindingsConfig::default(),
+            beat_detection: BeatDetectionConfig::default(),
         }
     }
 }
@@ -81,15 +84,12 @@ impl Default for KeybindingsConfig {
 
 impl Config {
     pub fn default_path() -> PathBuf {
-        let config_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."));
+        let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         config_dir.join("terminal-vibes").join("config.toml")
     }
 
     pub fn load(path: Option<&PathBuf>) -> anyhow::Result<Self> {
-        let config_path = path
-            .cloned()
-            .unwrap_or_else(Self::default_path);
+        let config_path = path.cloned().unwrap_or_else(Self::default_path);
 
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;

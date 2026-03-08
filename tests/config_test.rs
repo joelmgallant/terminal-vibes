@@ -69,3 +69,25 @@ fn test_config_file_path_respects_default() {
     assert!(path_str.contains("terminal-vibes"));
     assert!(path_str.ends_with("config.toml"));
 }
+
+#[test]
+fn test_beat_detection_config_defaults() {
+    let config = Config::default();
+    assert_eq!(config.beat_detection.sensitivity, 1.4);
+    assert_eq!(config.beat_detection.envelope_decay, 0.95);
+    assert_eq!(config.beat_detection.cooldown_frames, 6);
+    assert_eq!(config.beat_detection.history_frames, 43);
+}
+
+#[test]
+fn test_beat_detection_config_from_toml() {
+    let toml_str = r#"
+[beat_detection]
+sensitivity = 1.8
+envelope_decay = 0.9
+"#;
+    let config: Config = toml::from_str(toml_str).unwrap();
+    assert_eq!(config.beat_detection.sensitivity, 1.8);
+    assert_eq!(config.beat_detection.envelope_decay, 0.9);
+    assert_eq!(config.beat_detection.cooldown_frames, 6);
+}
