@@ -1,5 +1,6 @@
 pub mod registry;
 pub mod spectrum;
+pub mod waveform;
 
 use crate::processing::FrameData;
 use crossterm::event::KeyEvent;
