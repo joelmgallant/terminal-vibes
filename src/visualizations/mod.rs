@@ -1,4 +1,5 @@
 pub mod registry;
+pub mod spectrum;
 
 use crate::processing::FrameData;
 use crossterm::event::KeyEvent;
