@@ -88,6 +88,40 @@ impl BandDetector {
         let sum: f32 = bands.iter().map(|&v| v * v).sum();
         sum / bands.len() as f32
     }
+
+    fn analyze(&mut self, energy: f32, config: &BeatDetectionConfig) -> (bool, f32) {
+        let capacity = self.energy_history.len();
+        self.energy_history[self.history_pos] = energy;
+        self.history_pos = (self.history_pos + 1) % capacity;
+        if self.history_len < capacity {
+            self.history_len += 1;
+        }
+
+        let history = &self.energy_history[..self.history_len];
+        let avg = history.iter().sum::<f32>() / history.len() as f32;
+        let variance =
+            history.iter().map(|&e| (e - avg).powi(2)).sum::<f32>() / history.len() as f32;
+
+        let threshold = avg * config.sensitivity + variance.sqrt() * config.variance_scale;
+
+        let beat = if self.cooldown_remaining > 0 {
+            self.cooldown_remaining -= 1;
+            false
+        } else if energy > threshold && energy > 1e-6 {
+            self.cooldown_remaining = config.cooldown_frames;
+            true
+        } else {
+            false
+        };
+
+        if beat {
+            self.envelope = 1.0;
+        } else {
+            self.envelope *= config.envelope_decay;
+        }
+
+        (beat, self.envelope)
+    }
 }
 
 pub struct BeatDetector {
@@ -134,18 +168,25 @@ impl BeatDetector {
         let mid_energy = BandDetector::compute_energy(&spectrum[bass_end..mid_end]);
         let treble_energy = BandDetector::compute_energy(&spectrum[mid_end..]);
 
+        let (bass_beat, bass_envelope) = self.bass.analyze(bass_energy, &self.config);
+        let (mid_beat, mid_envelope) = self.mid.analyze(mid_energy, &self.config);
+        let (treble_beat, treble_envelope) = self.treble.analyze(treble_energy, &self.config);
+
+        let beat = bass_beat || mid_beat || treble_beat;
+        let envelope = bass_envelope.max(mid_envelope).max(treble_envelope);
+
         BeatData {
             bass_energy,
             mid_energy,
             treble_energy,
-            bass_beat: false,
-            mid_beat: false,
-            treble_beat: false,
-            bass_envelope: 0.0,
-            mid_envelope: 0.0,
-            treble_envelope: 0.0,
-            beat: false,
-            envelope: 0.0,
+            bass_beat,
+            mid_beat,
+            treble_beat,
+            bass_envelope,
+            mid_envelope,
+            treble_envelope,
+            beat,
+            envelope,
         }
     }
 }
@@ -211,6 +252,118 @@ mod tests {
             beat.bass_energy < 0.01,
             "Bass energy should be ~zero, got {}",
             beat.bass_energy
+        );
+    }
+
+    #[test]
+    fn test_no_beats_on_silence() {
+        let mut detector = BeatDetector::new(128, make_config());
+        let spectrum = vec![0.0_f32; 128];
+        for _ in 0..50 {
+            let beat = detector.analyze(&spectrum);
+            assert!(!beat.bass_beat, "No beats on silence");
+            assert!(!beat.beat, "No overall beat on silence");
+        }
+    }
+
+    #[test]
+    fn test_beat_detected_on_sudden_energy_spike() {
+        let mut detector = BeatDetector::new(128, make_config());
+        let quiet = vec![0.05_f32; 128];
+        let mut loud = vec![0.05_f32; 128];
+        // Fill bass bins only (bass_end=37 for 128 bands)
+        for i in 0..37 {
+            loud[i] = 0.9;
+        }
+
+        for _ in 0..50 {
+            detector.analyze(&quiet);
+        }
+
+        let beat = detector.analyze(&loud);
+        assert!(beat.bass_beat, "Bass beat should fire on energy spike");
+        assert!(beat.beat, "Overall beat should fire");
+    }
+
+    #[test]
+    fn test_cooldown_prevents_rapid_beats() {
+        let config = BeatDetectionConfig {
+            cooldown_frames: 6,
+            ..BeatDetectionConfig::default()
+        };
+        let mut detector = BeatDetector::new(128, config);
+        let quiet = vec![0.05_f32; 128];
+        let mut loud = vec![0.05_f32; 128];
+        // Fill bass bins only (bass_end=37 for 128 bands)
+        for i in 0..37 {
+            loud[i] = 0.9;
+        }
+
+        for _ in 0..50 {
+            detector.analyze(&quiet);
+        }
+
+        let beat1 = detector.analyze(&loud);
+        assert!(beat1.bass_beat, "First spike should beat");
+
+        detector.analyze(&quiet);
+        let beat2 = detector.analyze(&loud);
+        assert!(!beat2.bass_beat, "Cooldown should prevent rapid re-trigger");
+    }
+
+    #[test]
+    fn test_envelope_decays_after_beat() {
+        let mut detector = BeatDetector::new(128, make_config());
+        let quiet = vec![0.05_f32; 128];
+        let mut loud = vec![0.05_f32; 128];
+        // Fill bass bins only (bass_end=37 for 128 bands)
+        for i in 0..37 {
+            loud[i] = 0.9;
+        }
+
+        for _ in 0..50 {
+            detector.analyze(&quiet);
+        }
+
+        let beat = detector.analyze(&loud);
+        assert!(
+            beat.bass_envelope > 0.9,
+            "Envelope should snap to ~1.0 on beat"
+        );
+
+        let mut prev_env = beat.bass_envelope;
+        for _ in 0..10 {
+            let b = detector.analyze(&quiet);
+            assert!(
+                b.bass_envelope < prev_env,
+                "Envelope should decay each frame"
+            );
+            prev_env = b.bass_envelope;
+        }
+        assert!(
+            prev_env < 0.7,
+            "Envelope should have decayed significantly after 10 frames"
+        );
+    }
+
+    #[test]
+    fn test_overall_envelope_is_max_of_bands() {
+        let mut detector = BeatDetector::new(128, make_config());
+        let quiet = vec![0.05_f32; 128];
+        let mut loud_treble = vec![0.05_f32; 128];
+        for i in 97..128 {
+            loud_treble[i] = 0.9;
+        }
+
+        for _ in 0..50 {
+            detector.analyze(&quiet);
+        }
+
+        let beat = detector.analyze(&loud_treble);
+        assert!(
+            (beat.envelope - beat.treble_envelope).abs() < 0.01
+                || beat.envelope >= beat.treble_envelope,
+            "Overall envelope should be >= treble envelope"
         );
     }
 }
