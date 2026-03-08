@@ -18,6 +18,7 @@ fn test_spectrum_bars_update_stores_spectrum() {
         waveform: vec![],
         peak: 0.9,
         rms: 0.5,
+        beat: Default::default(),
     };
     viz.update(&frame);
     // After update, render should not panic
@@ -42,6 +43,7 @@ fn test_spectrum_bars_render_zero_area_no_panic() {
         waveform: vec![],
         peak: 0.5,
         rms: 0.3,
+        beat: Default::default(),
     };
     viz.update(&frame);
     let area = Rect::new(0, 0, 0, 0);

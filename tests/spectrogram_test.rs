@@ -20,6 +20,7 @@ fn test_spectrogram_accumulates_history() {
             waveform: vec![],
             peak: 0.5,
             rms: 0.3,
+            beat: Default::default(),
         };
         viz.update(&frame);
     }

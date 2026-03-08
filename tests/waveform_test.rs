@@ -18,6 +18,7 @@ fn test_waveform_update_stores_samples() {
         waveform: vec![0.0, 0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5],
         peak: 1.0,
         rms: 0.5,
+        beat: Default::default(),
     };
     viz.update(&frame);
     let area = Rect::new(0, 0, 40, 10);

@@ -4,11 +4,30 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Default)]
+pub struct BeatData {
+    /// Per-band beat detected this frame
+    pub bass_beat: bool,
+    pub mid_beat: bool,
+    pub treble_beat: bool,
+
+    /// Per-band pulse envelopes (0.0..1.0, fast attack / configurable decay)
+    pub bass_pulse: f32,
+    pub mid_pulse: f32,
+    pub treble_pulse: f32,
+
+    /// Per-band energy levels (0.0..1.0, pre-threshold continuous values)
+    pub bass_energy: f32,
+    pub mid_energy: f32,
+    pub treble_energy: f32,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct FrameData {
     pub spectrum: Vec<f32>,
     pub waveform: Vec<f32>,
     pub peak: f32,
     pub rms: f32,
+    pub beat: BeatData,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +120,7 @@ impl Processor {
             waveform,
             peak,
             rms,
+            beat: BeatData::default(),
         }
     }
 }
