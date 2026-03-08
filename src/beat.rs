@@ -6,9 +6,12 @@ pub struct BeatData {
     pub mid_energy: f32,
     pub treble_energy: f32,
 
-    /// Per-band beat detected this frame
+    /// Per-band beat detected this frame (used by visualizations)
+    #[allow(dead_code)]
     pub bass_beat: bool,
+    #[allow(dead_code)]
     pub mid_beat: bool,
+    #[allow(dead_code)]
     pub treble_beat: bool,
 
     /// Per-band envelope (0.0..1.0) — fast attack, smooth decay
