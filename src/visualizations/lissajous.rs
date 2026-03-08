@@ -102,18 +102,27 @@ impl Visualization for Lissajous {
         // Scale pumps with beat envelope — breathes with the music
         let scale = 0.2 + self.peak * 0.4 + self.beat_envelope * 0.4;
         let num_points = 500;
-        let curve: Vec<(f32, f32)> = (0..num_points)
-            .map(|i| {
-                let t = i as f32 / num_points as f32 * 2.0 * PI;
-                let x = (a * t + self.phase_x + self.time).sin() * scale;
-                let y = (b * t + self.phase_y + self.time * 0.7).sin() * scale;
-                (x, y)
-            })
-            .collect();
 
-        // Push to trail, keep last N frames
         let max_trail = 5 + (self.rms * 15.0) as usize; // 5-20 frames based on energy
+
+        // Recycle a buffer from the front if at capacity, avoiding allocation
+        let mut curve = if self.trail.len() >= max_trail {
+            let mut c = self.trail.pop_front().unwrap();
+            c.clear();
+            c
+        } else {
+            Vec::with_capacity(num_points)
+        };
+
+        curve.extend((0..num_points).map(|i| {
+            let t = i as f32 / num_points as f32 * 2.0 * PI;
+            let x = (a * t + self.phase_x + self.time).sin() * scale;
+            let y = (b * t + self.phase_y + self.time * 0.7).sin() * scale;
+            (x, y)
+        }));
+
         self.trail.push_back(curve);
+        // max_trail can shrink when RMS drops — trim excess
         while self.trail.len() > max_trail {
             self.trail.pop_front();
         }

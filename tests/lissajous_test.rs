@@ -87,3 +87,35 @@ fn test_lissajous_evolves_over_updates() {
     });
     assert!(differs, "Lissajous pattern should evolve over time");
 }
+
+#[test]
+fn test_lissajous_recycling_across_many_updates() {
+    let mut viz = Lissajous::new();
+    let frame = FrameData {
+        spectrum: vec![0.5; 128],
+        waveform: vec![0.0; 2048],
+        peak: 0.8,
+        rms: 0.5,
+        beat: Default::default(),
+    };
+
+    for _ in 0..50 {
+        viz.update(&frame);
+    }
+
+    let area = Rect::new(0, 0, 80, 24);
+    let mut buf = Buffer::empty(area);
+    viz.render(area, &mut buf);
+
+    let has_content = (0..24).any(|y| {
+        (0..80).any(|x| {
+            let ch = buf[(x as u16, y as u16)]
+                .symbol()
+                .chars()
+                .next()
+                .unwrap_or(' ');
+            ch != ' ' && ch != '\u{2800}'
+        })
+    });
+    assert!(has_content, "Lissajous should render content after trail recycling");
+}

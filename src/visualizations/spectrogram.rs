@@ -29,14 +29,17 @@ impl Visualization for Spectrogram {
     }
 
     fn update(&mut self, frame: &FrameData) {
-        self.history.push_back(frame.spectrum.clone());
-        self.beat_markers.push_back(frame.beat.beat);
-        while self.history.len() > self.max_history {
-            self.history.pop_front();
-        }
-        while self.beat_markers.len() > self.max_history {
+        // Recycle a buffer from the front if at capacity, avoiding allocation
+        let mut recycled = if self.history.len() >= self.max_history {
             self.beat_markers.pop_front();
-        }
+            self.history.pop_front().unwrap()
+        } else {
+            Vec::new()
+        };
+        recycled.resize(frame.spectrum.len(), 0.0);
+        recycled.copy_from_slice(&frame.spectrum);
+        self.history.push_back(recycled);
+        self.beat_markers.push_back(frame.beat.beat);
     }
 
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
