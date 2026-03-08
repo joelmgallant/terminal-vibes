@@ -43,6 +43,30 @@ impl Default for BeatData {
     }
 }
 
+/// Tempo estimation output, attached to each `FrameData`.
+#[derive(Debug, Clone)]
+pub struct TempoData {
+    /// Estimated BPM (0.0 if unknown)
+    pub bpm: f32,
+    /// Confidence in the estimate (0.0..1.0)
+    pub confidence: f32,
+    /// Beat phase (0.0..1.0) — 0.0 at beat, rises to 1.0 at next beat
+    pub phase: f32,
+    /// Predicted beat this frame (phase wrapped past 1.0 with high confidence)
+    pub predicted_beat: bool,
+}
+
+impl Default for TempoData {
+    fn default() -> Self {
+        Self {
+            bpm: 0.0,
+            confidence: 0.0,
+            phase: 0.0,
+            predicted_beat: false,
+        }
+    }
+}
+
 /// Configuration for beat detection.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(default)]

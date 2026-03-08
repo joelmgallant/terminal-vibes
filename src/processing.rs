@@ -1,4 +1,4 @@
-use crate::beat::BeatData;
+use crate::beat::{BeatData, TempoData};
 use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::f32::consts::PI;
@@ -11,6 +11,7 @@ pub struct FrameData {
     pub peak: f32,
     pub rms: f32,
     pub beat: BeatData,
+    pub tempo: TempoData,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +104,7 @@ impl Processor {
             peak,
             rms,
             beat: BeatData::default(),
+            tempo: TempoData::default(),
         }
     }
 }
