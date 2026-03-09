@@ -117,6 +117,35 @@ App state saved to `~/.config/terminal-vibes/state.toml`:
 4. Add integration test in `tests/your_viz_test.rs`
 5. Per-plugin config lives under `[visualizations.<name>]` in TOML
 
+## Release Process
+
+Fully automated via `.github/workflows/release.yml` using [release-plz](https://release-plz.ieni.dev/).
+
+**To release**: Push to `trunk` with conventional commit messages. CI handles everything else.
+
+### What CI Does
+
+1. Runs `release-plz update` — analyzes commits, bumps `Cargo.toml` version, updates `CHANGELOG.md`
+2. Commits as `chore(release): bump to vX.Y.Z and update changelog`
+3. Runs `release-plz release` — creates a GitHub Release with generated notes
+
+### Versioning
+
+Based on conventional commit prefixes:
+- `fix:` / `perf:` → patch bump
+- `feat:` → minor bump
+- `BREAKING CHANGE` → major bump
+
+### Local/Remote Version Drift
+
+After CI runs, `origin/trunk` will have a `chore(release)` commit that bumps `Cargo.toml` and changelog. Always `git fetch` and rebase before pushing new work to avoid conflicts.
+
+### Notes
+
+- Runner is `macos-latest` (needed for platform-specific dependencies)
+- Loop prevention: CI skips commits starting with `chore(release):`
+- `Cargo.toml` version may appear stale locally — the CI commit updates it on the remote
+
 ## Performance Considerations
 
 - Audio callback must never block or allocate — ring buffer is lock-free
