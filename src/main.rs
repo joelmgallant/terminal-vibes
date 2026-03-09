@@ -22,6 +22,7 @@ use config::Config;
 use processing::{FrameData, Processor, ProcessorConfig};
 use ui::App;
 use visualizations::aurora::Aurora;
+use visualizations::life::Life;
 use visualizations::lissajous::Lissajous;
 use visualizations::plasma::Plasma;
 use visualizations::radial::RadialSpectrum;
@@ -61,6 +62,7 @@ fn main() -> Result<()> {
         println!("  aurora      - Northern lights curtains");
         println!("  starfield   - 3D particle warp drive");
         println!("  rain        - Music-reactive falling streams");
+        println!("  life        - Audio-reactive Game of Life");
         return Ok(());
     }
 
@@ -92,6 +94,7 @@ fn main() -> Result<()> {
     registry.register(Box::new(Aurora::new()));
     registry.register(Box::new(Starfield::new()));
     registry.register(Box::new(Rain::new()));
+    registry.register(Box::new(Life::new()));
 
     // Set up processing -> UI channel
     let (frame_tx, frame_rx) = mpsc::sync_channel::<FrameData>(2);
