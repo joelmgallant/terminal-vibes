@@ -78,6 +78,10 @@ impl Visualization for Plasma {
         self.time += 0.03 + self.rms * 0.05 + self.beat_envelope * 0.06;
     }
 
+    fn set_quantization_step(&mut self, step: u8) {
+        self.canvas.set_step(step);
+    }
+
     fn heavy_rendering(&self) -> bool {
         true
     }

@@ -28,6 +28,7 @@ pub struct Rain {
     frame_counter: u32,
     beat_envelope: f32,
     beat_fired: bool,
+    quant_step: u8,
 }
 
 impl Default for Rain {
@@ -48,6 +49,7 @@ impl Rain {
             frame_counter: 0,
             beat_envelope: 0.0,
             beat_fired: false,
+            quant_step: 16,
         }
     }
 
@@ -188,7 +190,7 @@ impl Visualization for Rain {
                         } else {
                             base_color
                         },
-                        16,
+                        self.quant_step,
                     );
 
                     let ch = if dy == 0 { head_char } else { tail_char };
@@ -196,6 +198,10 @@ impl Visualization for Rain {
                 }
             }
         }
+    }
+
+    fn set_quantization_step(&mut self, step: u8) {
+        self.quant_step = step;
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

@@ -18,7 +18,6 @@ pub fn quantize_color(color: Color, step: u8) -> Color {
 
 /// Compute quantization step based on terminal cell count and user color detail preference.
 /// Higher cell count → coarser step (more perf). Higher detail → finer step (more fidelity).
-#[allow(dead_code)]
 pub fn adaptive_quantization_step(cell_count: u32, color_detail: f32) -> u8 {
     let base = if cell_count < 4000 {
         16u8

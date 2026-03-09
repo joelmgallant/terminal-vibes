@@ -46,6 +46,9 @@ pub trait Visualization: Send {
     /// Apply config values.
     fn apply_config(&mut self, _config: &toml::Value) {}
 
+    /// Set the quantization step for color reduction (adaptive detail control).
+    fn set_quantization_step(&mut self, _step: u8) {}
+
     /// Return current runtime state for persistence.
     fn save_config(&self) -> toml::Value {
         self.default_config()

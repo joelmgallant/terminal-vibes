@@ -104,6 +104,10 @@ impl Visualization for Aurora {
         self.time += 0.02 + self.rms * 0.04;
     }
 
+    fn set_quantization_step(&mut self, step: u8) {
+        self.canvas.set_step(step);
+    }
+
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

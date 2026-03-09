@@ -11,6 +11,7 @@ pub struct Spectrogram {
     /// Track which frames had a beat for marker rendering
     beat_markers: VecDeque<bool>,
     max_history: usize,
+    quant_step: u8,
 }
 
 impl Spectrogram {
@@ -19,6 +20,7 @@ impl Spectrogram {
             history: VecDeque::with_capacity(max_history),
             beat_markers: VecDeque::with_capacity(max_history),
             max_history,
+            quant_step: 16,
         }
     }
 }
@@ -85,13 +87,17 @@ impl Visualization for Spectrogram {
                 } else {
                     intensity
                 };
-                let color = quantize_color(magma_colormap(display_intensity), 16);
+                let color = quantize_color(magma_colormap(display_intensity), self.quant_step);
 
                 buf[(x, y)]
                     .set_char(intensity_char(display_intensity))
                     .set_fg(color);
             }
         }
+    }
+
+    fn set_quantization_step(&mut self, step: u8) {
+        self.quant_step = step;
     }
 
     fn apply_config(&mut self, config: &toml::Value) {

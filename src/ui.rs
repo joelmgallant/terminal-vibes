@@ -27,6 +27,7 @@ pub struct App {
     running: Arc<AtomicBool>,
     sensitivity: f32,
     beat_intensity: f32,
+    color_detail: f32,
     /// When the visualization was last switched (drives label fade).
     label_shown_at: Instant,
 }
@@ -39,6 +40,7 @@ impl App {
     ) -> Self {
         let mut sensitivity = 1.0_f32;
         let mut beat_intensity = 1.0_f32;
+        let mut color_detail = 1.0_f32;
         // Restore saved state
         if let Some(state) = Self::load_state() {
             if let Some(viz_name) = state.get("current_visualization").and_then(|v| v.as_str()) {
@@ -50,6 +52,9 @@ impl App {
             if let Some(b) = state.get("beat_intensity").and_then(|v| v.as_float()) {
                 beat_intensity = b as f32;
             }
+            if let Some(cd) = state.get("color_detail").and_then(|v| v.as_float()) {
+                color_detail = cd as f32;
+            }
             if let Some(viz_table) = state.get("visualizations").and_then(|v| v.as_table()) {
                 registry.load_all(viz_table);
             }
@@ -60,6 +65,7 @@ impl App {
             running,
             sensitivity,
             beat_intensity,
+            color_detail,
             label_shown_at: Instant::now(),
         }
     }
@@ -126,6 +132,14 @@ impl App {
             display_frame.beat.mid_energy = (display_frame.beat.mid_energy * bi).clamp(0.0, 1.0);
             display_frame.beat.treble_energy =
                 (display_frame.beat.treble_energy * bi).clamp(0.0, 1.0);
+
+            let term_size = terminal.size()?;
+            let cell_count = term_size.width as u32 * term_size.height as u32;
+            let quant_step = crate::visualizations::render::adaptive_quantization_step(
+                cell_count,
+                self.color_detail,
+            );
+            self.registry.set_quantization_step(quant_step);
 
             self.registry.update_current(&display_frame);
 
@@ -195,9 +209,9 @@ impl App {
                         format!("  {}  ", bpm_display)
                     };
                     let status = format!(
-                        " [{}]  peak: {:.2}  rms: {:.2}  env: {:.2}  {}{}  sens: {:.1}x  beat: {:.1}x  |  Tab: next  q: quit ",
+                        " [{}]  peak: {:.2}  rms: {:.2}  env: {:.2}  {}{}  sens: {:.1}x  beat: {:.1}x  detail: {:.1}x  |  Tab: next  q: quit ",
                         mode_name, display_frame.peak, display_frame.rms,
-                        display_frame.beat.envelope, beat_indicator, bpm_section, self.sensitivity, self.beat_intensity,
+                        display_frame.beat.envelope, beat_indicator, bpm_section, self.sensitivity, self.beat_intensity, self.color_detail,
                     );
                     let status_bar = Paragraph::new(status)
                         .style(Style::default().fg(Color::White).bg(Color::DarkGray));
@@ -267,6 +281,14 @@ impl App {
                 self.beat_intensity = (self.beat_intensity - 0.1).max(0.0);
                 true
             }
+            KeyCode::Char('d') => {
+                self.color_detail = (self.color_detail + 0.1).min(2.0);
+                true
+            }
+            KeyCode::Char('D') => {
+                self.color_detail = (self.color_detail - 0.1).max(0.5);
+                true
+            }
             KeyCode::Char('s') => {
                 self.config.display.show_status_bar = !self.config.display.show_status_bar;
                 true
@@ -300,6 +322,10 @@ impl App {
         root.insert(
             "beat_intensity".to_string(),
             toml::Value::Float(self.beat_intensity as f64),
+        );
+        root.insert(
+            "color_detail".to_string(),
+            toml::Value::Float(self.color_detail as f64),
         );
 
         let viz_states = self.registry.save_all();

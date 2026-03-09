@@ -145,6 +145,10 @@ impl Visualization for Tunnel {
         self.time += 0.016;
     }
 
+    fn set_quantization_step(&mut self, step: u8) {
+        self.canvas.set_step(step);
+    }
+
     fn heavy_rendering(&self) -> bool {
         true
     }

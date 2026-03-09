@@ -119,6 +119,7 @@ pub struct SpectrumBars {
     phase: f32,
     beat_envelope: f32,
     beat_fired: bool,
+    quant_step: u8,
 }
 
 impl Default for SpectrumBars {
@@ -138,6 +139,7 @@ impl SpectrumBars {
             phase: 0.0,
             beat_envelope: 0.0,
             beat_fired: false,
+            quant_step: 16,
         }
     }
 }
@@ -220,7 +222,7 @@ impl Visualization for SpectrumBars {
                 } else {
                     base_color
                 },
-                16,
+                self.quant_step,
             );
 
             if self.chunky {
@@ -263,6 +265,10 @@ impl Visualization for SpectrumBars {
                 }
             }
         }
+    }
+
+    fn set_quantization_step(&mut self, step: u8) {
+        self.quant_step = step;
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {

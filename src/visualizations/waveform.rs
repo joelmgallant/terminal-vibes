@@ -14,6 +14,7 @@ pub struct Waveform {
     history: VecDeque<f32>,
     color: Color,
     beat_envelope: f32,
+    quant_step: u8,
 }
 
 impl Default for Waveform {
@@ -28,6 +29,7 @@ impl Waveform {
             history: VecDeque::with_capacity(MAX_HISTORY),
             color: Color::from_u32(0x0000ff88),
             beat_envelope: 0.0,
+            quant_step: 16,
         }
     }
 }
@@ -67,7 +69,7 @@ impl Visualization for Waveform {
             } else {
                 self.color
             },
-            16,
+            self.quant_step,
         );
 
         let history_len = self.history.len();
@@ -99,6 +101,10 @@ impl Visualization for Waveform {
             // Overwrite the point itself with a solid dot
             buf[(area.x + x, y)].set_char('\u{2022}').set_fg(draw_color);
         }
+    }
+
+    fn set_quantization_step(&mut self, step: u8) {
+        self.quant_step = step;
     }
 
     fn apply_config(&mut self, config: &toml::Value) {

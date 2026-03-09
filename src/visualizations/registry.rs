@@ -69,6 +69,12 @@ impl VisualizationRegistry {
         }
     }
 
+    pub fn set_quantization_step(&mut self, step: u8) {
+        if let Some(viz) = self.current_mut() {
+            viz.set_quantization_step(step);
+        }
+    }
+
     pub fn update_current(&mut self, frame: &FrameData) {
         if let Some(viz) = self.current_mut() {
             viz.update(frame);
