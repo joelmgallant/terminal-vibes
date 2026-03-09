@@ -1,3 +1,14 @@
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(dead_code)]
+pub enum BlendMode {
+    /// dst + src (clamped). Trails glow, colors accumulate.
+    Additive,
+    /// src replaces dst. Opaque overlay.
+    Alpha,
+    /// max(dst, src) per channel. Brighten only.
+    Max,
+}
+
 /// Double-buffered float RGB canvas for MilkDrop-style feedback rendering.
 ///
 /// Two buffers at HalfBlockCanvas pixel resolution (cols × rows×2):
@@ -97,6 +108,28 @@ impl FeedbackCanvas {
             pixel.2 *= factor;
         }
     }
+
+    /// Paint a pixel onto the back buffer with the given blend mode.
+    #[inline]
+    pub fn paint(&mut self, x: usize, y: usize, color: (f32, f32, f32), blend: BlendMode) {
+        let Some(i) = self.idx(x, y) else { return };
+        let dst = &mut self.back[i];
+        match blend {
+            BlendMode::Additive => {
+                dst.0 = (dst.0 + color.0).min(1.0);
+                dst.1 = (dst.1 + color.1).min(1.0);
+                dst.2 = (dst.2 + color.2).min(1.0);
+            }
+            BlendMode::Alpha => {
+                *dst = color;
+            }
+            BlendMode::Max => {
+                dst.0 = dst.0.max(color.0);
+                dst.1 = dst.1.max(color.1);
+                dst.2 = dst.2.max(color.2);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -184,5 +217,55 @@ mod tests {
         assert!(r < 0.001, "should fade to near-zero, got {r}");
         assert!(g < 0.001);
         assert!(b < 0.001);
+    }
+
+    #[test]
+    fn test_paint_additive() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (0.3, 0.2, 0.1));
+        fb.paint(0, 0, (0.2, 0.3, 0.4), BlendMode::Additive);
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!((r - 0.5).abs() < 0.001);
+        assert!((g - 0.5).abs() < 0.001);
+        assert!((b - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_paint_additive_clamps() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (0.8, 0.9, 1.0));
+        fb.paint(0, 0, (0.5, 0.5, 0.5), BlendMode::Additive);
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!(r <= 1.0);
+        assert!(g <= 1.0);
+        assert!(b <= 1.0);
+    }
+
+    #[test]
+    fn test_paint_alpha_replaces() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (1.0, 1.0, 1.0));
+        fb.paint(0, 0, (0.2, 0.3, 0.4), BlendMode::Alpha);
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!((r - 0.2).abs() < 0.001);
+        assert!((g - 0.3).abs() < 0.001);
+        assert!((b - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_paint_max_brightens_only() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (0.5, 0.8, 0.3));
+        fb.paint(0, 0, (0.7, 0.2, 0.9), BlendMode::Max);
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!((r - 0.7).abs() < 0.001); // 0.7 > 0.5
+        assert!((g - 0.8).abs() < 0.001); // 0.8 > 0.2
+        assert!((b - 0.9).abs() < 0.001); // 0.9 > 0.3
+    }
+
+    #[test]
+    fn test_paint_out_of_bounds_no_panic() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.paint(100, 100, (1.0, 1.0, 1.0), BlendMode::Additive);
     }
 }
