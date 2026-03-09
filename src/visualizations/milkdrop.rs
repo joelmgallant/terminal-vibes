@@ -24,10 +24,15 @@ pub struct Milkdrop {
     peak: f32,
     beat_envelope: f32,
 
-    // Transform parameters
-    zoom_amount: f32,
+    // User-tunable transform bases (adjusted via keyboard)
+    base_zoom: f32,      // base zoom per frame (1.0 = none)
+    rotation_speed: f32, // base rotation radians per frame
+    warp_intensity: f32, // warp displacement multiplier
+    decay_factor: f32,   // trail fade (0.80–0.99)
+    reactivity: f32,     // how much audio drives transforms (0.0–1.0)
+
+    // Computed per-frame (derived from bases + audio * reactivity)
     rotation_angle: f32,
-    decay_factor: f32,
     time: f32,
 
     // Layer toggles
@@ -76,9 +81,13 @@ impl Milkdrop {
             peak: 0.0,
             beat_envelope: 0.0,
 
-            zoom_amount: 1.02,
-            rotation_angle: 0.0,
+            base_zoom: 1.003,
+            rotation_speed: 0.002,
+            warp_intensity: 0.5,
             decay_factor: 0.92,
+            reactivity: 0.3,
+
+            rotation_angle: 0.0,
             time: 0.0,
 
             waveform_enabled: true,
@@ -95,7 +104,7 @@ impl Milkdrop {
     }
 
     fn update_audio(&mut self, frame: &FrameData) {
-        let smooth = 0.3_f32; // EMA factor
+        let smooth = 0.3_f32;
 
         let band_count = frame.spectrum.len();
         if band_count >= 3 {
@@ -109,7 +118,7 @@ impl Milkdrop {
         }
 
         self.rms = self.rms * (1.0 - smooth) + frame.rms * smooth;
-        self.peak = frame.peak; // peak is instant, don't smooth
+        self.peak = frame.peak;
         self.beat_envelope = frame.beat.envelope;
         self.spectrum.clear();
         self.spectrum.extend_from_slice(&frame.spectrum);
@@ -118,33 +127,38 @@ impl Milkdrop {
     }
 
     fn update_transforms(&mut self) {
-        let beat_boost = 1.0 + self.beat_envelope * 0.5;
+        let r = self.reactivity;
+        let beat_boost = 1.0 + self.beat_envelope * 0.3 * r;
 
-        // Zoom: bass pushes outward
-        self.zoom_amount = (1.01 + self.bass * 0.04) * beat_boost;
+        // Rotation: base speed + mid-driven, scaled by reactivity
+        self.rotation_angle += (self.rotation_speed + self.mid * 0.01 * r) * beat_boost;
 
-        // Rotation: mid energy drives spin
-        self.rotation_angle += (0.005 + self.mid * 0.03) * beat_boost;
-
-        // Warp grid: treble drives ripple
-        let ripple = self.treble * 3.0 * beat_boost;
+        // Warp grid: treble drives ripple, scaled by intensity and reactivity
+        let ripple = self.treble * self.warp_intensity * r * beat_boost;
+        let radial_push = self.warp_intensity * 0.3;
         for gy in 0..WARP_GRID_H {
             for gx in 0..WARP_GRID_W {
                 let nx = gx as f32 / (WARP_GRID_W - 1) as f32 * 2.0 - 1.0;
                 let ny = gy as f32 / (WARP_GRID_H - 1) as f32 * 2.0 - 1.0;
                 let angle = ny.atan2(nx);
                 let dist = (nx * nx + ny * ny).sqrt();
-                // Radial outward push + tangential ripple
-                let dx =
-                    dist * angle.cos() * 0.5 + SIN_LUT.get(self.time * 2.0 + dist * 5.0) * ripple;
-                let dy =
-                    dist * angle.sin() * 0.5 + SIN_LUT.get(self.time * 2.3 + dist * 5.0) * ripple;
+                let dx = dist * angle.cos() * radial_push
+                    + SIN_LUT.get(self.time * 2.0 + dist * 5.0) * ripple;
+                let dy = dist * angle.sin() * radial_push
+                    + SIN_LUT.get(self.time * 2.3 + dist * 5.0) * ripple;
                 self.warp_grid.set(gx, gy, (dx, dy));
             }
         }
 
-        // Time advance: scales with audio energy
-        self.time += 0.03 + self.rms * 0.05;
+        // Time advance
+        self.time += 0.015 + self.rms * 0.02 * r;
+    }
+
+    /// Compute effective zoom for this frame from base + audio.
+    fn effective_zoom(&self) -> f32 {
+        let r = self.reactivity;
+        let beat_boost = 1.0 + self.beat_envelope * 0.3 * r;
+        (self.base_zoom + self.bass * 0.015 * r) * beat_boost
     }
 
     fn paint_waveform(&mut self) {
@@ -157,7 +171,7 @@ impl Milkdrop {
             return;
         }
 
-        self.waveform_hue += 0.01 + self.beat_envelope * 0.05;
+        self.waveform_hue += 0.01 + self.beat_envelope * 0.05 * self.reactivity;
         let hue = self.waveform_hue % 1.0;
         let color = hue_to_rgb(hue);
         let brightness = 0.5 + self.peak * 0.5;
@@ -202,16 +216,17 @@ impl Milkdrop {
         let cx = pw as f32 / 2.0;
         let cy = ph as f32 / 2.0;
         let base_radius = (pw.min(ph) as f32) * 0.15;
-        let radius = base_radius * (1.0 + self.bass * 2.0 + self.beat_envelope * 0.5);
+        let r = self.reactivity;
+        let radius = base_radius * (1.0 + self.bass * 1.5 * r + self.beat_envelope * 0.3 * r);
 
         let num_dots = self.spectrum.len().min(64);
         for i in 0..num_dots {
             let t = i as f32 / num_dots as f32;
             let angle = t * 2.0 * PI + self.time * 0.5;
             let mag = self.spectrum.get(i).copied().unwrap_or(0.0);
-            let r = radius * (0.5 + mag * 0.5);
-            let x = (cx + r * SIN_LUT.get(angle + PI / 2.0)).round() as usize;
-            let y = (cy + r * SIN_LUT.get(angle)).round() as usize;
+            let dot_r = radius * (0.5 + mag * 0.5);
+            let x = (cx + dot_r * SIN_LUT.get(angle + PI / 2.0)).round() as usize;
+            let y = (cy + dot_r * SIN_LUT.get(angle)).round() as usize;
 
             let color = self.palette.color(t);
             let (cr, cg, cb) = match color {
@@ -239,12 +254,13 @@ impl Milkdrop {
 
         // Spawn on beat
         if self.beat_envelope > 0.5 && self.particles.len() < 128 {
-            let burst = ((self.beat_envelope * 8.0) as usize).min(128 - self.particles.len());
+            let burst = ((self.beat_envelope * 8.0 * self.reactivity) as usize)
+                .min(128 - self.particles.len());
             let cx = pw / 2.0;
             let cy = ph / 2.0;
             for _ in 0..burst {
-                let angle = self.time * 37.0 + self.particles.len() as f32 * 2.399; // golden angle-ish
-                let speed = 1.0 + self.peak * 3.0;
+                let angle = self.time * 37.0 + self.particles.len() as f32 * 2.399;
+                let speed = 0.5 + self.peak * 2.0 * self.reactivity;
                 self.particles.push(Particle {
                     x: cx,
                     y: cy,
@@ -328,8 +344,8 @@ impl Visualization for Milkdrop {
         self.feedback.swap();
 
         // 2. Transform — zoom + rotate the previous frame
-        self.feedback
-            .zoom_rotate(cx, cy, self.zoom_amount, self.rotation_angle * 0.02);
+        let zoom = self.effective_zoom();
+        self.feedback.zoom_rotate(cx, cy, zoom, self.rotation_angle);
 
         // 3. Decay — fade trails
         self.feedback.decay(self.decay_factor);
@@ -357,6 +373,7 @@ impl Visualization for Milkdrop {
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         use crossterm::event::KeyCode;
         match key.code {
+            // Layer toggles
             KeyCode::Char('w') => {
                 self.waveform_enabled = !self.waveform_enabled;
                 true
@@ -369,6 +386,7 @@ impl Visualization for Milkdrop {
                 self.particles_enabled = !self.particles_enabled;
                 true
             }
+            // Decay (trail length)
             KeyCode::Char('d') => {
                 self.decay_factor = (self.decay_factor + 0.01).min(0.99);
                 true
@@ -377,14 +395,43 @@ impl Visualization for Milkdrop {
                 self.decay_factor = (self.decay_factor - 0.01).max(0.80);
                 true
             }
+            // Base zoom
             KeyCode::Char('z') => {
-                self.zoom_amount = (self.zoom_amount + 0.005).min(1.15);
+                self.base_zoom = (self.base_zoom + 0.002).min(1.05);
                 true
             }
             KeyCode::Char('Z') => {
-                self.zoom_amount = (self.zoom_amount - 0.005).max(0.95);
+                self.base_zoom = (self.base_zoom - 0.002).max(0.98);
                 true
             }
+            // Rotation speed
+            KeyCode::Char('x') => {
+                self.rotation_speed = (self.rotation_speed + 0.001).min(0.02);
+                true
+            }
+            KeyCode::Char('X') => {
+                self.rotation_speed = (self.rotation_speed - 0.001).max(0.0);
+                true
+            }
+            // Warp intensity
+            KeyCode::Char('c') => {
+                self.warp_intensity = (self.warp_intensity + 0.1).min(3.0);
+                true
+            }
+            KeyCode::Char('C') => {
+                self.warp_intensity = (self.warp_intensity - 0.1).max(0.0);
+                true
+            }
+            // Reactivity (audio→transform coupling)
+            KeyCode::Char('v') => {
+                self.reactivity = (self.reactivity + 0.05).min(1.0);
+                true
+            }
+            KeyCode::Char('V') => {
+                self.reactivity = (self.reactivity - 0.05).max(0.0);
+                true
+            }
+            // Palette cycling
             KeyCode::Char('p') => {
                 self.palette = ColorPalette::ALL[(ColorPalette::ALL
                     .iter()
@@ -414,6 +461,10 @@ impl Visualization for Milkdrop {
             toml::Value::String("synthwave".to_string()),
         );
         table.insert("decay_factor".to_string(), toml::Value::Float(0.92));
+        table.insert("base_zoom".to_string(), toml::Value::Float(1.003));
+        table.insert("rotation_speed".to_string(), toml::Value::Float(0.002));
+        table.insert("warp_intensity".to_string(), toml::Value::Float(0.5));
+        table.insert("reactivity".to_string(), toml::Value::Float(0.3));
         table.insert("waveform_enabled".to_string(), toml::Value::Boolean(true));
         table.insert("shapes_enabled".to_string(), toml::Value::Boolean(true));
         table.insert("particles_enabled".to_string(), toml::Value::Boolean(true));
@@ -426,17 +477,29 @@ impl Visualization for Milkdrop {
                 self.palette = p;
             }
         }
-        if let Some(d) = config.get("decay_factor").and_then(|v| v.as_float()) {
-            self.decay_factor = (d as f32).clamp(0.80, 0.99);
+        if let Some(v) = config.get("decay_factor").and_then(|v| v.as_float()) {
+            self.decay_factor = (v as f32).clamp(0.80, 0.99);
         }
-        if let Some(w) = config.get("waveform_enabled").and_then(|v| v.as_bool()) {
-            self.waveform_enabled = w;
+        if let Some(v) = config.get("base_zoom").and_then(|v| v.as_float()) {
+            self.base_zoom = (v as f32).clamp(0.98, 1.05);
         }
-        if let Some(s) = config.get("shapes_enabled").and_then(|v| v.as_bool()) {
-            self.shapes_enabled = s;
+        if let Some(v) = config.get("rotation_speed").and_then(|v| v.as_float()) {
+            self.rotation_speed = (v as f32).clamp(0.0, 0.02);
         }
-        if let Some(p) = config.get("particles_enabled").and_then(|v| v.as_bool()) {
-            self.particles_enabled = p;
+        if let Some(v) = config.get("warp_intensity").and_then(|v| v.as_float()) {
+            self.warp_intensity = (v as f32).clamp(0.0, 3.0);
+        }
+        if let Some(v) = config.get("reactivity").and_then(|v| v.as_float()) {
+            self.reactivity = (v as f32).clamp(0.0, 1.0);
+        }
+        if let Some(v) = config.get("waveform_enabled").and_then(|v| v.as_bool()) {
+            self.waveform_enabled = v;
+        }
+        if let Some(v) = config.get("shapes_enabled").and_then(|v| v.as_bool()) {
+            self.shapes_enabled = v;
+        }
+        if let Some(v) = config.get("particles_enabled").and_then(|v| v.as_bool()) {
+            self.particles_enabled = v;
         }
     }
 
@@ -449,6 +512,22 @@ impl Visualization for Milkdrop {
         table.insert(
             "decay_factor".to_string(),
             toml::Value::Float(self.decay_factor as f64),
+        );
+        table.insert(
+            "base_zoom".to_string(),
+            toml::Value::Float(self.base_zoom as f64),
+        );
+        table.insert(
+            "rotation_speed".to_string(),
+            toml::Value::Float(self.rotation_speed as f64),
+        );
+        table.insert(
+            "warp_intensity".to_string(),
+            toml::Value::Float(self.warp_intensity as f64),
+        );
+        table.insert(
+            "reactivity".to_string(),
+            toml::Value::Float(self.reactivity as f64),
         );
         table.insert(
             "waveform_enabled".to_string(),
