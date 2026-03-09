@@ -209,16 +209,19 @@ impl Visualization for SpectrumBars {
                 self.palette.color(color_t)
             };
             // Bars stay bright, beat adds a white-hot glow on top
-            let color = quantize_color(if let Color::Rgb(r, g, b) = base_color {
-                let boost = self.beat_envelope * 0.4;
-                Color::Rgb(
-                    (r as f32 + (255.0 - r as f32) * boost) as u8,
-                    (g as f32 + (255.0 - g as f32) * boost) as u8,
-                    (b as f32 + (255.0 - b as f32) * boost) as u8,
-                )
-            } else {
-                base_color
-            });
+            let color = quantize_color(
+                if let Color::Rgb(r, g, b) = base_color {
+                    let boost = self.beat_envelope * 0.4;
+                    Color::Rgb(
+                        (r as f32 + (255.0 - r as f32) * boost) as u8,
+                        (g as f32 + (255.0 - g as f32) * boost) as u8,
+                        (b as f32 + (255.0 - b as f32) * boost) as u8,
+                    )
+                } else {
+                    base_color
+                },
+                16,
+            );
 
             if self.chunky {
                 let full_cells = (value * area.height as f32).round() as u16;

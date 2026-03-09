@@ -178,15 +178,18 @@ impl Visualization for Rain {
 
                     // Beat envelope brightens all drops
                     let beat_brightness = 0.4 + self.beat_envelope * 0.6;
-                    let color = quantize_color(if let Color::Rgb(r, g, b) = base_color {
-                        Color::Rgb(
-                            (r as f32 * fade * beat_brightness) as u8,
-                            (g as f32 * fade * beat_brightness) as u8,
-                            (b as f32 * fade * beat_brightness) as u8,
-                        )
-                    } else {
-                        base_color
-                    });
+                    let color = quantize_color(
+                        if let Color::Rgb(r, g, b) = base_color {
+                            Color::Rgb(
+                                (r as f32 * fade * beat_brightness) as u8,
+                                (g as f32 * fade * beat_brightness) as u8,
+                                (b as f32 * fade * beat_brightness) as u8,
+                            )
+                        } else {
+                            base_color
+                        },
+                        16,
+                    );
 
                     let ch = if dy == 0 { head_char } else { tail_char };
                     buf[(x, y)].set_char(ch).set_fg(color);

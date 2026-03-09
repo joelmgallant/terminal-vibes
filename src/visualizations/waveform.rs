@@ -56,16 +56,19 @@ impl Visualization for Waveform {
         let mid_y = area.y + area.height / 2;
 
         // Beat envelope drives brightness: dim between beats, vivid on beats
-        let draw_color = quantize_color(if let Color::Rgb(r, g, b) = self.color {
-            let brightness = 0.3 + self.beat_envelope * 0.7;
-            Color::Rgb(
-                (r as f32 * brightness) as u8,
-                (g as f32 * brightness) as u8,
-                (b as f32 * brightness) as u8,
-            )
-        } else {
-            self.color
-        });
+        let draw_color = quantize_color(
+            if let Color::Rgb(r, g, b) = self.color {
+                let brightness = 0.3 + self.beat_envelope * 0.7;
+                Color::Rgb(
+                    (r as f32 * brightness) as u8,
+                    (g as f32 * brightness) as u8,
+                    (b as f32 * brightness) as u8,
+                )
+            } else {
+                self.color
+            },
+            16,
+        );
 
         let history_len = self.history.len();
 

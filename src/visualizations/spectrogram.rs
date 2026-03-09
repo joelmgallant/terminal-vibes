@@ -85,7 +85,7 @@ impl Visualization for Spectrogram {
                 } else {
                     intensity
                 };
-                let color = quantize_color(magma_colormap(display_intensity));
+                let color = quantize_color(magma_colormap(display_intensity), 16);
 
                 buf[(x, y)]
                     .set_char(intensity_char(display_intensity))

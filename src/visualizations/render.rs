@@ -8,12 +8,9 @@ use ratatui::style::Color;
 /// ratatui's frame diff sees more unchanged cells, dramatically cutting
 /// escape sequence volume in terminal multiplexers like tmux.
 #[inline]
-pub fn quantize_color(color: Color) -> Color {
+pub fn quantize_color(color: Color, step: u8) -> Color {
     match color {
-        Color::Rgb(r, g, b) => {
-            const STEP: u8 = 16;
-            Color::Rgb((r / STEP) * STEP, (g / STEP) * STEP, (b / STEP) * STEP)
-        }
+        Color::Rgb(r, g, b) => Color::Rgb((r / step) * step, (g / step) * step, (b / step) * step),
         other => other,
     }
 }
@@ -82,7 +79,7 @@ impl BrailleCanvas {
 
     /// Render the pixel buffer into a ratatui Buffer using braille characters.
     pub fn render(&self, area: &Rect, buf: &mut Buffer, color: Color) {
-        let color = quantize_color(color);
+        let color = quantize_color(color, 16);
         let render_cols = self.cols.min(area.width);
         let render_rows = self.rows.min(area.height);
 
@@ -186,8 +183,8 @@ impl HalfBlockCanvas {
             for cx in 0..render_cols {
                 let top_idx = (cy as usize * 2) * self.pixel_width() + cx as usize;
                 let bot_idx = (cy as usize * 2 + 1) * self.pixel_width() + cx as usize;
-                let top = self.pixels[top_idx].map(quantize_color);
-                let bot = self.pixels[bot_idx].map(quantize_color);
+                let top = self.pixels[top_idx].map(|c| quantize_color(c, 16));
+                let bot = self.pixels[bot_idx].map(|c| quantize_color(c, 16));
 
                 let cell = &mut buf[(area.x + cx, area.y + cy)];
                 match (top, bot) {
@@ -209,5 +206,31 @@ impl HalfBlockCanvas {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quantize_color_step_16() {
+        assert_eq!(
+            quantize_color(Color::Rgb(17, 33, 255), 16),
+            Color::Rgb(16, 32, 240)
+        );
+    }
+
+    #[test]
+    fn quantize_color_step_32() {
+        assert_eq!(
+            quantize_color(Color::Rgb(33, 50, 255), 32),
+            Color::Rgb(32, 32, 224)
+        );
+    }
+
+    #[test]
+    fn quantize_color_passthrough_non_rgb() {
+        assert_eq!(quantize_color(Color::White, 16), Color::White);
     }
 }
