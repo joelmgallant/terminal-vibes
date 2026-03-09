@@ -240,7 +240,18 @@ impl HalfBlockCanvas {
     }
 
     /// Render the color buffer into a ratatui Buffer using half-block characters.
+    /// Fills the entire area with a black background for consistency.
     pub fn render(&self, area: &Rect, buf: &mut Buffer) {
+        let black = Color::Rgb(0, 0, 0);
+
+        // Fill entire area with black background first
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let cell = &mut buf[(area.x + x, area.y + y)];
+                cell.set_char(' ').set_bg(black);
+            }
+        }
+
         let render_cols = self.cols.min(area.width);
         let render_rows = self.rows.min(area.height);
 
@@ -254,20 +265,18 @@ impl HalfBlockCanvas {
                 let cell = &mut buf[(area.x + cx, area.y + cy)];
                 match (top, bot) {
                     (Some(tc), Some(bc)) if tc == bc => {
-                        cell.set_char('\u{2588}').set_fg(tc);
+                        cell.set_char('\u{2588}').set_fg(tc).set_bg(black);
                     }
                     (Some(tc), Some(bc)) => {
                         cell.set_char('\u{2580}').set_fg(tc).set_bg(bc);
                     }
                     (Some(tc), None) => {
-                        cell.set_char('\u{2580}').set_fg(tc);
+                        cell.set_char('\u{2580}').set_fg(tc).set_bg(black);
                     }
                     (None, Some(bc)) => {
-                        cell.set_char('\u{2584}').set_fg(bc);
+                        cell.set_char('\u{2584}').set_fg(bc).set_bg(black);
                     }
-                    (None, None) => {
-                        cell.set_char(' ');
-                    }
+                    (None, None) => {} // already black from fill
                 }
             }
         }
