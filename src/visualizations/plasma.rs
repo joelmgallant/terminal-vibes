@@ -1,5 +1,5 @@
 use crate::processing::FrameData;
-use crate::visualizations::render::HalfBlockCanvas;
+use crate::visualizations::render::{HalfBlockCanvas, SIN_LUT};
 use crate::visualizations::Visualization;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -97,11 +97,11 @@ impl Visualization for Plasma {
                 let x = px as f32 / pw as f32;
 
                 // Classic plasma: sum of sine functions
-                let v1 = (x * self.k1 + self.time).sin();
-                let v2 = (y * self.k2 + self.time * 1.3).sin();
-                let v3 = ((x + y) * self.k3 + self.time * 0.7).sin();
+                let v1 = SIN_LUT.get(x * self.k1 + self.time);
+                let v2 = SIN_LUT.get(y * self.k2 + self.time * 1.3);
+                let v3 = SIN_LUT.get((x + y) * self.k3 + self.time * 0.7);
                 let dist = ((x - 0.5).powi(2) + (y - 0.5).powi(2)).sqrt();
-                let v4 = (dist * self.k4 + self.time * 1.1).sin();
+                let v4 = SIN_LUT.get(dist * self.k4 + self.time * 1.1);
 
                 let v = (v1 + v2 + v3 + v4) / 4.0; // -1.0..1.0
                 let t = (v + 1.0) / 2.0; // normalize to 0.0..1.0
@@ -118,8 +118,8 @@ impl Visualization for Plasma {
 /// Map a value (0..1) and hue offset to an RGB color via HSV-like rotation.
 fn plasma_color(t: f32, hue_offset: f32) -> Color {
     let hue = (t + hue_offset) % 1.0;
-    let r = ((hue * 2.0 * PI).sin() * 0.5 + 0.5) * 255.0;
-    let g = ((hue * 2.0 * PI + 2.094).sin() * 0.5 + 0.5) * 255.0; // +120°
-    let b = ((hue * 2.0 * PI + 4.189).sin() * 0.5 + 0.5) * 255.0; // +240°
+    let r = (SIN_LUT.get(hue * 2.0 * PI) * 0.5 + 0.5) * 255.0;
+    let g = (SIN_LUT.get(hue * 2.0 * PI + 2.094) * 0.5 + 0.5) * 255.0; // +120°
+    let b = (SIN_LUT.get(hue * 2.0 * PI + 4.189) * 0.5 + 0.5) * 255.0; // +240°
     Color::Rgb(r as u8, g as u8, b as u8)
 }

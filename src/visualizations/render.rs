@@ -9,6 +9,7 @@ use ratatui::style::Color;
 /// escape sequence volume in terminal multiplexers like tmux.
 #[inline]
 pub fn quantize_color(color: Color, step: u8) -> Color {
+    debug_assert!(step > 0, "quantize_color step must be non-zero");
     match color {
         Color::Rgb(r, g, b) => Color::Rgb((r / step) * step, (g / step) * step, (b / step) * step),
         other => other,
@@ -122,6 +123,36 @@ pub fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+use std::f32::consts::TAU;
+use std::sync::LazyLock;
+
+const SIN_LUT_SIZE: usize = 4096;
+
+/// Pre-computed sine lookup table for fast O(1) trig approximation.
+/// 4096 entries cover one full period (0..TAU) with max error < 0.001.
+pub struct SinLut {
+    table: [f32; SIN_LUT_SIZE],
+}
+
+impl SinLut {
+    fn new() -> Self {
+        let mut table = [0.0; SIN_LUT_SIZE];
+        for (i, val) in table.iter_mut().enumerate() {
+            *val = (TAU * i as f32 / SIN_LUT_SIZE as f32).sin();
+        }
+        Self { table }
+    }
+
+    #[inline]
+    pub fn get(&self, radians: f32) -> f32 {
+        let normalized = radians.rem_euclid(TAU) / TAU;
+        let index = (normalized * SIN_LUT_SIZE as f32) as usize % SIN_LUT_SIZE;
+        self.table[index]
+    }
+}
+
+pub static SIN_LUT: LazyLock<SinLut> = LazyLock::new(SinLut::new);
+
 /// A 2D color canvas at 2x vertical resolution using half-block characters.
 /// Each terminal cell encodes two vertical "pixels" via fg/bg color.
 /// Upper pixel uses foreground color with ▀, lower uses background color.
@@ -212,6 +243,7 @@ impl HalfBlockCanvas {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f32::consts::PI;
 
     #[test]
     fn quantize_color_step_16() {
@@ -232,5 +264,27 @@ mod tests {
     #[test]
     fn quantize_color_passthrough_non_rgb() {
         assert_eq!(quantize_color(Color::White, 16), Color::White);
+    }
+
+    #[test]
+    fn sin_lut_accuracy() {
+        let lut = SinLut::new();
+        assert!((lut.get(0.0) - 0.0_f32.sin()).abs() < 0.002);
+        assert!((lut.get(PI / 2.0) - 1.0).abs() < 0.002);
+        assert!((lut.get(PI) - 0.0).abs() < 0.002);
+        assert!((lut.get(3.0 * PI / 2.0) - (-1.0)).abs() < 0.002);
+    }
+
+    #[test]
+    fn sin_lut_wraps_negative() {
+        let lut = SinLut::new();
+        assert!((lut.get(-PI / 2.0) - (-1.0)).abs() < 0.002);
+    }
+
+    #[test]
+    fn sin_lut_wraps_large() {
+        let lut = SinLut::new();
+        let val = 100.0 * PI + PI / 2.0;
+        assert!((lut.get(val) - val.sin()).abs() < 0.002);
     }
 }
