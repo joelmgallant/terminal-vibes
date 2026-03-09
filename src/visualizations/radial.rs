@@ -74,7 +74,7 @@ impl Visualization for RadialSpectrum {
             let base_color = self.palette.color(t);
             // Beat envelope drives brightness: dim when quiet, vivid on beat
             let color = if let ratatui::style::Color::Rgb(r, g, b) = base_color {
-                let brightness = 0.3 + self.beat_envelope * 0.7;
+                let brightness = 0.6 + self.beat_envelope * 0.4;
                 ratatui::style::Color::Rgb(
                     (r as f32 * brightness) as u8,
                     (g as f32 * brightness) as u8,
