@@ -118,6 +118,174 @@ impl Life {
             frame_counter: 0,
         }
     }
+
+    /// Ensure grid matches target dimensions, reinitializing if size changed.
+    fn ensure_grid(&mut self, width: usize, height: usize) {
+        if self.grid_width != width || self.grid_height != height {
+            self.grid_width = width;
+            self.grid_height = height;
+            let size = width * height;
+            self.current = vec![Cell::default(); size];
+            self.next = vec![Cell::default(); size];
+        }
+    }
+
+    /// Count live neighbors with toroidal wrapping.
+    fn count_neighbors(&self, x: usize, y: usize) -> u8 {
+        let w = self.grid_width;
+        let h = self.grid_height;
+        let mut count = 0u8;
+        for dy in [h - 1, 0, 1] {
+            for dx in [w - 1, 0, 1] {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = (x + dx) % w;
+                let ny = (y + dy) % h;
+                if self.current[ny * w + nx].alive {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    /// Run one generation of the simulation with audio-warped rules.
+    fn tick(&mut self) {
+        let w = self.grid_width;
+        let h = self.grid_height;
+        if w == 0 || h == 0 {
+            return;
+        }
+
+        // Audio-warped rules:
+        // Bass envelope lowers birth threshold (can birth on 2 neighbors)
+        // Treble envelope raises survival ceiling (survive on 1-4)
+        let birth_min = if self.bass_envelope > 0.5 { 2 } else { 3 };
+        let birth_max = 3;
+        let survive_min = if self.treble_envelope > 0.5 { 1 } else { 2 };
+        let survive_max = if self.treble_envelope > 0.3 { 4 } else { 3 };
+
+        for y in 0..h {
+            for x in 0..w {
+                let idx = y * w + x;
+                let neighbors = self.count_neighbors(x, y);
+                let cell = self.current[idx];
+
+                self.next[idx] = if cell.alive {
+                    if neighbors >= survive_min && neighbors <= survive_max {
+                        Cell {
+                            alive: true,
+                            age: cell.age.saturating_add(1).min(1000),
+                        }
+                    } else {
+                        Cell::default()
+                    }
+                } else if neighbors >= birth_min && neighbors <= birth_max {
+                    Cell {
+                        alive: true,
+                        age: 0,
+                    }
+                } else {
+                    Cell::default()
+                };
+            }
+        }
+
+        std::mem::swap(&mut self.current, &mut self.next);
+    }
+
+    /// Seed cells based on audio energy. Frequency bands map spatially.
+    fn seed_from_audio(&mut self) {
+        let w = self.grid_width;
+        let h = self.grid_height;
+        if w == 0 || h == 0 || self.spectrum.is_empty() {
+            return;
+        }
+
+        let spawn_density = self.rms * 0.3 + self.peak * 0.1;
+        let third = h / 3;
+
+        for x in 0..w {
+            let band_idx = (x * self.spectrum.len()) / w;
+            let energy = self.spectrum[band_idx.min(self.spectrum.len() - 1)];
+
+            // Map frequency to vertical zone: bass=bottom, mid=middle, treble=top
+            let (y_start, y_end) = if band_idx < self.spectrum.len() / 3 {
+                (third * 2, h) // bass = bottom third
+            } else if band_idx < self.spectrum.len() * 2 / 3 {
+                (third, third * 2) // mid = middle third
+            } else {
+                (0, third) // treble = top third
+            };
+
+            // Probabilistic spawn based on energy and RMS
+            let spawn_chance = energy * spawn_density;
+            let hash = self
+                .frame_counter
+                .wrapping_mul(2654435761)
+                .wrapping_add(x as u32);
+            let rand_val = (hash >> 16) as f32 / 65536.0;
+
+            if rand_val < spawn_chance && y_start < y_end {
+                let y = y_start + (hash as usize % (y_end - y_start));
+                let idx = y * w + x;
+                if !self.current[idx].alive {
+                    self.current[idx] = Cell {
+                        alive: true,
+                        age: 0,
+                    };
+                }
+            }
+        }
+    }
+
+    /// Spawn a classic pattern at a random position on beat.
+    fn spawn_pattern_on_beat(&mut self) {
+        if !self.beat_fired {
+            return;
+        }
+        let w = self.grid_width;
+        let h = self.grid_height;
+        if w < 5 || h < 5 {
+            return;
+        }
+
+        let hash = self.frame_counter.wrapping_mul(2654435761);
+        let cx = (hash as usize) % (w - 4);
+        let cy = ((hash >> 8) as usize) % (h - 4);
+
+        // Pick pattern based on energy level
+        let pattern: &[(usize, usize)] = if self.beat_envelope > 0.7 {
+            // R-pentomino (chaotic, long-lived)
+            &[(1, 0), (2, 0), (0, 1), (1, 1), (1, 2)]
+        } else if self.beat_envelope > 0.4 {
+            // Glider
+            &[(2, 0), (0, 1), (2, 1), (1, 2), (2, 2)]
+        } else {
+            // Blinker
+            &[(0, 1), (1, 1), (2, 1)]
+        };
+
+        for &(dx, dy) in pattern {
+            let x = (cx + dx) % w;
+            let y = (cy + dy) % h;
+            let idx = y * w + x;
+            self.current[idx] = Cell {
+                alive: true,
+                age: 0,
+            };
+        }
+    }
+
+    /// Compute grid dimensions for the current render mode and terminal area.
+    fn grid_dims_for_area(&self, area: Rect) -> (usize, usize) {
+        match self.render_mode {
+            RenderMode::Character => (area.width as usize, area.height as usize),
+            RenderMode::HalfBlock => (area.width as usize, area.height as usize * 2),
+            RenderMode::Braille => (area.width as usize * 2, area.height as usize * 4),
+        }
+    }
 }
 
 impl Visualization for Life {
@@ -125,8 +293,31 @@ impl Visualization for Life {
         "life"
     }
 
-    fn update(&mut self, _frame: &FrameData) {
-        // TODO: Task 3
+    fn update(&mut self, frame: &FrameData) {
+        // Store audio state
+        self.rms = frame.rms;
+        self.peak = frame.peak;
+        self.spectrum.resize(frame.spectrum.len(), 0.0);
+        self.spectrum.copy_from_slice(&frame.spectrum);
+        self.beat_envelope = frame.beat.envelope;
+        self.beat_fired = frame.beat.beat;
+        self.bass_envelope = frame.beat.bass_envelope;
+        self.treble_envelope = frame.beat.treble_envelope;
+        self.bass_energy = frame.beat.bass_energy;
+        self.mid_energy = frame.beat.mid_energy;
+        self.treble_energy = frame.beat.treble_energy;
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+
+        // Seed cells from audio
+        self.seed_from_audio();
+        self.spawn_pattern_on_beat();
+
+        // Tick simulation every 2 frames (~30 gen/sec at 60fps)
+        // Extra tick on beat for time acceleration
+        self.tick_counter = self.tick_counter.wrapping_add(1);
+        if self.tick_counter % 2 == 0 || self.beat_fired {
+            self.tick();
+        }
     }
 
     fn render(&mut self, _area: Rect, _buf: &mut Buffer) {
