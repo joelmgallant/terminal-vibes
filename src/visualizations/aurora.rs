@@ -170,6 +170,10 @@ impl Visualization for Aurora {
         true
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[("l", "cycle layers")]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('l') => {

@@ -271,6 +271,15 @@ impl Visualization for SpectrumBars {
         self.quant_step = step;
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[
+            ("g", "toggle gaps"),
+            ("c", "toggle chunky"),
+            ("r", "toggle cycling"),
+            ("p/P", "palette"),
+        ]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('g') => {

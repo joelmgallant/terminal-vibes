@@ -8,7 +8,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::prelude::*;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use std::io::stdout;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -36,6 +36,8 @@ pub struct App {
     budget_adjust_counter: u32,
     /// When the visualization was last switched (drives label fade).
     label_shown_at: Instant,
+    /// Whether the help overlay is visible.
+    show_help: bool,
 }
 
 impl App {
@@ -76,6 +78,7 @@ impl App {
             budget_adjust_counter: 0,
             effective_color_detail: color_detail,
             label_shown_at: Instant::now(),
+            show_help: false,
         }
     }
 
@@ -227,6 +230,74 @@ impl App {
                         .style(Style::default().fg(Color::White).bg(Color::DarkGray));
                     f.render_widget(status_bar, chunks[1]);
                 }
+
+                // Help overlay
+                if self.show_help && viz_area.height > 6 && viz_area.width > 24 {
+                    let viz_help = self
+                        .registry
+                        .current()
+                        .map(|v| v.help_keys())
+                        .unwrap_or(&[]);
+                    let viz_name = self
+                        .registry
+                        .current()
+                        .map(|v| v.name())
+                        .unwrap_or("none");
+
+                    let mut lines: Vec<Line> = Vec::new();
+
+                    if !viz_help.is_empty() {
+                        lines.push(Line::from(Span::styled(
+                            format!("── {} ──", viz_name),
+                            Style::default().fg(Color::Cyan),
+                        )));
+                        for &(key, desc) in viz_help {
+                            lines.push(Line::from(format!("  {:<7} {}", key, desc)));
+                        }
+                        lines.push(Line::from(""));
+                    }
+
+                    lines.push(Line::from(Span::styled(
+                        "── global ──",
+                        Style::default().fg(Color::Yellow),
+                    )));
+                    for &(key, desc) in &[
+                        ("Tab", "next visualization"),
+                        ("S-Tab", "prev visualization"),
+                        ("+/-", "sensitivity"),
+                        ("b/B", "beat intensity"),
+                        ("]/[", "color detail"),
+                        ("s", "status bar"),
+                        ("q", "quit"),
+                    ] {
+                        lines.push(Line::from(format!("  {:<7} {}", key, desc)));
+                    }
+
+                    let content_w = lines
+                        .iter()
+                        .map(|l| l.width() as u16)
+                        .max()
+                        .unwrap_or(20)
+                        + 4;
+                    let content_h = lines.len() as u16 + 2;
+                    let overlay_w = content_w.min(viz_area.width.saturating_sub(4));
+                    let overlay_h = content_h.min(viz_area.height.saturating_sub(2));
+                    let overlay_x =
+                        viz_area.x + (viz_area.width.saturating_sub(overlay_w)) / 2;
+                    let overlay_y =
+                        viz_area.y + (viz_area.height.saturating_sub(overlay_h)) / 2;
+                    let overlay_area =
+                        Rect::new(overlay_x, overlay_y, overlay_w, overlay_h);
+
+                    f.render_widget(Clear, overlay_area);
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray));
+                    let help_widget = Paragraph::new(lines)
+                        .block(block)
+                        .style(Style::default().fg(Color::White).bg(Color::Black));
+                    f.render_widget(help_widget, overlay_area);
+                }
             })?;
             let draw_elapsed = draw_start.elapsed().as_secs_f32();
 
@@ -322,6 +393,10 @@ impl App {
             }
             KeyCode::Char('s') => {
                 self.config.display.show_status_bar = !self.config.display.show_status_bar;
+                true
+            }
+            KeyCode::Char('H') => {
+                self.show_help = !self.show_help;
                 true
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
