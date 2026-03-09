@@ -106,6 +106,10 @@ impl Visualization for RadialSpectrum {
         self.canvas.render(&area, buf);
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[("m", "toggle mirror"), ("p/P", "palette")]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('m') => {

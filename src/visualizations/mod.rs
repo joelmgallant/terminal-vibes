@@ -29,6 +29,11 @@ pub trait Visualization: Send {
     /// Render into the given ratatui buffer area.
     fn render(&mut self, area: Rect, buf: &mut Buffer);
 
+    /// Return keybind descriptions for the help overlay: (key_label, description).
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[]
+    }
+
     /// Handle a keypress specific to this visualization. Returns true if handled.
     fn on_key(&mut self, _key: KeyEvent) -> bool {
         false

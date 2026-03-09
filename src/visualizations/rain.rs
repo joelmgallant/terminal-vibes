@@ -204,6 +204,10 @@ impl Visualization for Rain {
         self.quant_step = step;
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[("t", "toggle thick"), ("p/P", "palette")]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('t') => {

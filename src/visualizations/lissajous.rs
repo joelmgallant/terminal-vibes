@@ -175,6 +175,10 @@ impl Visualization for Lissajous {
         self.canvas.render(&area, buf, draw_color);
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[("f", "freeze ratios"), ("r", "next ratio")]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('f') => {

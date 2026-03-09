@@ -408,6 +408,15 @@ impl Visualization for Life {
         }
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[
+            ("m", "render mode"),
+            ("r", "randomize"),
+            ("c", "clear"),
+            ("p/P", "palette"),
+        ]
+    }
+
     fn on_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Char('m') => {

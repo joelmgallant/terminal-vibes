@@ -165,6 +165,7 @@ Music-reactive falling streams. Per-column energy controls drop density, beats t
 | `b` / `B` | Increase / decrease beat intensity |
 | `]` / `[` | Increase / decrease color detail (fidelity vs performance) |
 | `s` | Toggle status bar |
+| `H` | Toggle help overlay (per-mode keybinds) |
 | `q` / `Ctrl+C` | Quit |
 
 ## Configuration

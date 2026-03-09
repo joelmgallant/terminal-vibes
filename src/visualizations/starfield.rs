@@ -168,6 +168,10 @@ impl Visualization for Starfield {
         self.canvas.render(&area, buf, color);
     }
 
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[("d", "cycle density")]
+    }
+
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
         match key.code {
             crossterm::event::KeyCode::Char('d') => {

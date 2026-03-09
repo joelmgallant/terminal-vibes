@@ -85,7 +85,7 @@ impl Milkdrop {
             rotation_speed: 0.002,
             warp_intensity: 0.5,
             decay_factor: 0.92,
-            reactivity: 0.3,
+            reactivity: 0.5,
 
             rotation_angle: 0.0,
             time: 0.0,
@@ -128,13 +128,13 @@ impl Milkdrop {
 
     fn update_transforms(&mut self) {
         let r = self.reactivity;
-        let beat_boost = 1.0 + self.beat_envelope * 0.3 * r;
+        let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
 
         // Rotation: base speed + mid-driven, scaled by reactivity
-        self.rotation_angle += (self.rotation_speed + self.mid * 0.01 * r) * beat_boost;
+        self.rotation_angle += (self.rotation_speed + self.mid * 0.015 * r) * beat_boost;
 
         // Warp grid: treble drives ripple, scaled by intensity and reactivity
-        let ripple = self.treble * self.warp_intensity * r * beat_boost;
+        let ripple = self.treble * self.warp_intensity * r * 1.5 * beat_boost;
         let radial_push = self.warp_intensity * 0.3;
         for gy in 0..WARP_GRID_H {
             for gx in 0..WARP_GRID_W {
@@ -151,14 +151,14 @@ impl Milkdrop {
         }
 
         // Time advance
-        self.time += 0.015 + self.rms * 0.02 * r;
+        self.time += 0.015 + self.rms * 0.03 * r;
     }
 
     /// Compute effective zoom for this frame from base + audio.
     fn effective_zoom(&self) -> f32 {
         let r = self.reactivity;
-        let beat_boost = 1.0 + self.beat_envelope * 0.3 * r;
-        (self.base_zoom + self.bass * 0.015 * r) * beat_boost
+        let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
+        (self.base_zoom + self.bass * 0.025 * r) * beat_boost
     }
 
     fn paint_waveform(&mut self) {
@@ -171,7 +171,7 @@ impl Milkdrop {
             return;
         }
 
-        self.waveform_hue += 0.01 + self.beat_envelope * 0.05 * self.reactivity;
+        self.waveform_hue += 0.01 + self.beat_envelope * 0.08 * self.reactivity;
         let hue = self.waveform_hue % 1.0;
         let color = hue_to_rgb(hue);
         let brightness = 0.5 + self.peak * 0.5;
@@ -217,7 +217,7 @@ impl Milkdrop {
         let cy = ph as f32 / 2.0;
         let base_radius = (pw.min(ph) as f32) * 0.15;
         let r = self.reactivity;
-        let radius = base_radius * (1.0 + self.bass * 1.5 * r + self.beat_envelope * 0.3 * r);
+        let radius = base_radius * (1.0 + self.bass * 2.0 * r + self.beat_envelope * 0.5 * r);
 
         let num_dots = self.spectrum.len().min(64);
         for i in 0..num_dots {
@@ -343,9 +343,10 @@ impl Visualization for Milkdrop {
         // 1. Swap — previous frame becomes read source
         self.feedback.swap();
 
-        // 2. Transform — zoom + rotate the previous frame
+        // 2. Transform — zoom + rotate + warp the previous frame
         let zoom = self.effective_zoom();
         self.feedback.zoom_rotate(cx, cy, zoom, self.rotation_angle);
+        self.feedback.warp(&self.warp_grid);
 
         // 3. Decay — fade trails
         self.feedback.decay(self.decay_factor);
@@ -368,6 +369,20 @@ impl Visualization for Milkdrop {
 
     fn set_quantization_step(&mut self, step: u8) {
         self.canvas.set_step(step);
+    }
+
+    fn help_keys(&self) -> &[(&str, &str)] {
+        &[
+            ("w", "toggle waveform"),
+            ("e", "toggle shapes"),
+            ("r", "toggle particles"),
+            ("d/D", "decay (trail length)"),
+            ("z/Z", "zoom"),
+            ("x/X", "rotation speed"),
+            ("c/C", "warp intensity"),
+            ("v/V", "reactivity"),
+            ("p/P", "palette"),
+        ]
     }
 
     fn on_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
@@ -464,7 +479,7 @@ impl Visualization for Milkdrop {
         table.insert("base_zoom".to_string(), toml::Value::Float(1.003));
         table.insert("rotation_speed".to_string(), toml::Value::Float(0.002));
         table.insert("warp_intensity".to_string(), toml::Value::Float(0.5));
-        table.insert("reactivity".to_string(), toml::Value::Float(0.3));
+        table.insert("reactivity".to_string(), toml::Value::Float(0.5));
         table.insert("waveform_enabled".to_string(), toml::Value::Boolean(true));
         table.insert("shapes_enabled".to_string(), toml::Value::Boolean(true));
         table.insert("particles_enabled".to_string(), toml::Value::Boolean(true));
