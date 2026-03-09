@@ -8,8 +8,12 @@ on:
 
 jobs:
   check:
-    name: Check
-    runs-on: macos-latest
+    name: Check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,6 +22,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Install PulseAudio dev libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
 
       - name: Cache cargo registry & build
         uses: Swatinem/rust-cache@v2
@@ -29,4 +37,4 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Tests
-        run: cargo test --lib
+        run: cargo test --lib --test audio_boundary_test

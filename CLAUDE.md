@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Terminal-based music visualizer for macOS. Captures system audio via Core Audio's `AudioProcessTap` API (requires macOS 15+) and renders real-time visualizations using ratatui in the terminal. 10 visualization modes, beat detection, and full TOML configuration.
+Terminal-based music visualizer. Captures system audio via platform-specific APIs (Core Audio on macOS, WASAPI on Windows, PulseAudio on Linux) and renders real-time visualizations using ratatui in the terminal. 10 visualization modes, beat detection, and full TOML configuration.
 
 ## Build & Development Commands
 
@@ -32,14 +32,14 @@ cargo fmt                    # Format
 
 ```
 Audio Thread          Processing Thread       Main Thread (UI)
-┌──────────┐         ┌──────────────┐        ┌──────────────────┐
-│ CoreAudio │──ring──▶│ FFT Pipeline │──mpsc─▶│  Ratatui Loop    │
-│ Callback  │ buffer  │   @60 Hz     │channel │  @60 FPS (raw)   │
-└──────────┘         └──────────────┘        │  @30 FPS (tmux)  │
+┌─────────────┐      ┌──────────────┐        ┌──────────────────┐
+│    Audio     │─ring─▶│ FFT Pipeline │──mpsc─▶│  Ratatui Loop    │
+│   Capture    │buffer │   @60 Hz     │channel │  @60 FPS (raw)   │
+└─────────────┘      └──────────────┘        │  @30 FPS (tmux)  │
                                               └──────────────────┘
 ```
 
-- **Audio Thread**: Core Audio callback writes f32 PCM samples into a lock-free SPSC ring buffer. Must never block or allocate.
+- **Audio Thread**: Platform-specific audio backend captures system audio and writes mono f32 PCM samples into a lock-free SPSC ring buffer. On macOS, this is a real-time Core Audio callback (must not block or allocate). On Windows/Linux, this is a dedicated capture thread.
 - **Processing Thread**: Polls ring buffer at ~60Hz, runs FFT pipeline (Hann window → FFT → magnitude → log band binning → dB → normalize → EMA smoothing), sends `FrameData` via bounded `mpsc::sync_channel(2)`. Drops frames if channel full.
 - **Main Thread**: Ratatui event loop, drains latest `FrameData`, delegates to active visualization plugin for update+render.
 
@@ -90,7 +90,9 @@ The `SinLut` static in `render.rs` provides a 4096-entry pre-computed sine looku
 - `config.rs` — TOML config with XDG paths (`~/.config/terminal-vibes/config.toml`)
 - `processing.rs` — FFT pipeline and `FrameData` production
 - `beat.rs` — Per-band beat detection, envelope tracking, energy analysis
-- `audio/tap.rs` — Core Audio FFI, `AudioTap` lifecycle (all unsafe code lives here)
+- `audio/tap.rs` — macOS: Core Audio FFI, `AudioTap` lifecycle (all unsafe code lives here)
+- `audio/wasapi.rs` — Windows: WASAPI loopback capture, polling capture thread
+- `audio/pulse.rs` — Linux: PulseAudio monitor source, blocking read capture thread
 - `audio/mod.rs` — `AudioConfig`, `AudioRingBuffer` types
 - `ui.rs` — Ratatui app shell, input handling, status bar, label fade, state persistence, frame budget monitoring
 - `visualizations/mod.rs` — `Visualization` trait definition
@@ -112,9 +114,12 @@ App state saved to `~/.config/terminal-vibes/state.toml`:
 
 ## Platform Constraints
 
-- **macOS only** — Core Audio FFI bindings in `audio/tap.rs`
-- **macOS 15+** — requires `AudioProcessTap` API
-- macOS-specific deps are gated with `[target.'cfg(target_os = "macos")'.dependencies]`
+- **macOS** — Core Audio `AudioProcessTap` API (requires macOS 15+)
+- **Windows** — WASAPI loopback capture via `windows` crate
+- **Linux** — PulseAudio monitor source via `libpulse-binding` (works with PipeWire's PulseAudio compat layer)
+- Platform-specific deps gated with `[target.'cfg(target_os = "...")'.dependencies]`
+- All audio backends export `AudioTap` with same API: `new(producer, config) -> Result<Self>` + `Drop`
+- Everything downstream of the ring buffer (FFT, beat detection, UI, visualizations) is cross-platform
 
 ## Adding a New Visualization
 
