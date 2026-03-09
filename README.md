@@ -21,7 +21,7 @@
 ░▓    ·── ♪ ♫  real-time audio visualizer for your terminal  ♫ ♪ ──·          ▓░
 ░▓                                                                            ▓░
 ░▓          ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄          ▓░
-░▓          █ macOS 15+  ·  Core Audio  ·  ratatui  ·  10 modes    █          ▓░
+░▓          █ macOS · Windows · Linux · ratatui  ·  12 modes    █          ▓░
 ░▓          █ beat detect ·  60 fps  ·  braille + halfblock art    █          ▓░
 ░▓          ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀          ▓░
 ░▓                                                                            ▓░
@@ -31,15 +31,26 @@
 ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 ```
 
-A real-time terminal music visualizer for macOS. Captures system audio and renders 10 visualization modes directly in your terminal. Built with Rust, Core Audio, and [ratatui](https://github.com/ratatui/ratatui).
+A real-time terminal music visualizer. Captures system audio and renders 12 visualization modes directly in your terminal. Built with Rust and [ratatui](https://github.com/ratatui/ratatui).
 
 https://github.com/user-attachments/assets/f05ef7fd-fa78-4616-abf4-30affbe15c41
 
+## Platform Support
+
+| Platform | Audio Backend | Status |
+|----------|--------------|--------|
+| **macOS 15+** | Core Audio `AudioProcessTap` | Tested |
+| **Windows** | WASAPI loopback | Untested |
+| **Linux** | PulseAudio / PipeWire | Untested |
+
+Windows and Linux backends compile and pass CI, but have not been tested with real audio hardware yet. Contributions and bug reports welcome.
+
 ## Requirements
 
-- **macOS 15+** (Sequoia) — uses the `AudioProcessTap` API for system audio capture
 - Rust toolchain (1.70+)
 - Terminal with true color support recommended
+- **macOS:** macOS 15+ (Sequoia) for the `AudioProcessTap` API
+- **Linux:** `libpulse-dev` (Debian/Ubuntu) or `pulseaudio-libs-devel` (Fedora). Works with PipeWire's PulseAudio compatibility layer.
 - **tmux/byobu users:** enable true color passthrough (see [Terminal Multiplexers](#terminal-multiplexers))
 
 ## Install
@@ -207,7 +218,7 @@ App state (current visualization, sensitivity, beat intensity, color detail, per
 
 Terminal-vibes runs a three-thread pipeline:
 
-1. **Audio capture** — A Core Audio `AudioProcessTap` callback writes raw PCM samples into a lock-free ring buffer in real time
+1. **Audio capture** — A platform-specific backend (Core Audio on macOS, WASAPI on Windows, PulseAudio on Linux) captures system audio and writes mono PCM samples into a lock-free ring buffer
 2. **DSP processing** — A worker thread runs an FFT pipeline at ~60Hz (windowing, FFT, logarithmic band binning, smoothing) and produces frame data with beat detection
 3. **Rendering** — The main thread runs a ratatui event loop at 60 FPS (30 FPS in tmux), drawing the active visualization to the terminal. A frame budget monitor auto-adjusts color detail to maintain smooth frame rates at any terminal size
 
