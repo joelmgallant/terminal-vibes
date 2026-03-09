@@ -32,10 +32,11 @@ cargo fmt                    # Format
 
 ```
 Audio Thread          Processing Thread       Main Thread (UI)
-┌──────────┐         ┌──────────────┐        ┌──────────────┐
-│ CoreAudio │──ring──▶│ FFT Pipeline │──mpsc─▶│ Ratatui Loop │
-│ Callback  │ buffer  │   @60 Hz     │channel │   @30 FPS    │
-└──────────┘         └──────────────┘        └──────────────┘
+┌──────────┐         ┌──────────────┐        ┌──────────────────┐
+│ CoreAudio │──ring──▶│ FFT Pipeline │──mpsc─▶│  Ratatui Loop    │
+│ Callback  │ buffer  │   @60 Hz     │channel │  @60 FPS (raw)   │
+└──────────┘         └──────────────┘        │  @30 FPS (tmux)  │
+                                              └──────────────────┘
 ```
 
 - **Audio Thread**: Core Audio callback writes f32 PCM samples into a lock-free SPSC ring buffer. Must never block or allocate.
@@ -62,6 +63,8 @@ All visualizations implement the `Visualization` trait (`visualizations/mod.rs`)
 - `update(&mut self, frame: &FrameData)` — process new audio data
 - `render(&mut self, area: Rect, buf: &mut Buffer)` — draw to terminal buffer
 - `on_key(&mut self, key: KeyEvent) -> bool` — handle mode-specific input
+- `set_quantization_step(&mut self, step: u8)` — receive adaptive color quantization step from UI
+- `heavy_rendering(&self) -> bool` — flag for escape-sequence-heavy modes (pauses rendering when unfocused in tmux)
 - `default_config` / `apply_config` / `save_config` — TOML persistence
 
 Plugins are registered in `VisualizationRegistry` and switched via Tab/Shift+Tab.
@@ -72,10 +75,14 @@ spectrum, waveform, spectrogram, lissajous, tunnel, radial, plasma, aurora, star
 ### Rendering Canvases
 
 Two canvas types in `visualizations/render.rs`:
-- **HalfBlockCanvas** — 2x vertical resolution using `▀`/`▄` with fg+bg color (used by plasma, aurora, spectrogram, tunnel)
+- **HalfBlockCanvas** — 2x vertical resolution using `▀`/`▄` with fg+bg color (used by plasma, aurora, tunnel)
 - **BrailleCanvas** — 2x4 sub-cell resolution using braille characters (used by lissajous, radial)
 
-Both include `quantize_color()` to reduce unique escape sequences for terminal multiplexer performance.
+Both canvases have a `step: u8` field controlling color quantization granularity. Colors are quantized at **set-time** (not render-time) via `quantize_color(color, step)` so that ratatui's buffer diff sees more unchanged cells between frames, reducing escape sequence volume.
+
+The `SinLut` static in `render.rs` provides a 4096-entry pre-computed sine lookup table (`SIN_LUT.get(radians)`) for O(1) trig — used by plasma to replace ~96K `sin()` calls per frame at fullscreen.
+
+`adaptive_quantization_step(cell_count, color_detail)` computes the quantization step based on terminal size (3 tiers: 16/24/32) scaled by the user's `color_detail` preference (0.5–2.0).
 
 ### Module Map
 
@@ -85,10 +92,10 @@ Both include `quantize_color()` to reduce unique escape sequences for terminal m
 - `beat.rs` — Per-band beat detection, envelope tracking, energy analysis
 - `audio/tap.rs` — Core Audio FFI, `AudioTap` lifecycle (all unsafe code lives here)
 - `audio/mod.rs` — `AudioConfig`, `AudioRingBuffer` types
-- `ui.rs` — Ratatui app shell, input handling, status bar, label fade, state persistence
+- `ui.rs` — Ratatui app shell, input handling, status bar, label fade, state persistence, frame budget monitoring
 - `visualizations/mod.rs` — `Visualization` trait definition
 - `visualizations/registry.rs` — Plugin management, state save/load
-- `visualizations/render.rs` — HalfBlockCanvas, BrailleCanvas, math helpers
+- `visualizations/render.rs` — HalfBlockCanvas, BrailleCanvas, SinLut, quantize_color, adaptive_quantization_step, math helpers
 - `visualizations/*.rs` — Individual visualization implementations
 
 ### Synchronization
@@ -100,7 +107,7 @@ Both include `quantize_color()` to reduce unique escape sequences for terminal m
 ### State Persistence
 
 App state saved to `~/.config/terminal-vibes/state.toml`:
-- Current visualization, sensitivity, beat intensity
+- Current visualization, sensitivity, beat intensity, color detail
 - Per-visualization config (palette, toggles, etc.)
 
 ## Platform Constraints
@@ -114,8 +121,10 @@ App state saved to `~/.config/terminal-vibes/state.toml`:
 1. Create `src/visualizations/your_viz.rs` implementing the `Visualization` trait
 2. Add `pub mod your_viz;` to `src/visualizations/mod.rs`
 3. Register in `main.rs` where the other plugins are registered
-4. Add integration test in `tests/your_viz_test.rs`
-5. Per-plugin config lives under `[visualizations.<name>]` in TOML
+4. Implement `set_quantization_step` — canvas-based vizs delegate to `self.canvas.set_step(step)`, direct-buffer vizs store `quant_step: u8` field and pass to `quantize_color`
+5. If the viz fills every cell with unique colors, return `true` from `heavy_rendering()`
+6. Add integration test in `tests/your_viz_test.rs`
+7. Per-plugin config lives under `[visualizations.<name>]` in TOML
 
 ## Release Process
 
@@ -150,6 +159,27 @@ After CI runs, `origin/trunk` will have a `chore(release)` commit that bumps `Ca
 
 - Audio callback must never block or allocate — ring buffer is lock-free
 - Visualizations should reuse buffers (canvas `resize_or_clear`, pre-allocated Vecs)
-- Color quantization reduces terminal escape sequence volume (critical for tmux)
+- Use `SIN_LUT.get()` instead of `.sin()` for per-pixel trig in hot render loops
+- Color quantization at canvas set-time reduces ratatui diff volume (fewer escape sequences)
+- Adaptive quantization step scales with terminal size — coarser at fullscreen for better perf
+- Frame budget monitoring auto-adjusts `effective_color_detail` every ~30 frames to prevent dropped frames
+- FPS defaults to 60 outside tmux, capped at 30 inside tmux
 - HalfBlockCanvas generates 2 escape sequences per cell (fg+bg) — keep color diversity bounded
 - Frame dropping is by design — processor drops if UI can't keep up
+
+### Adding Performance-Sensitive Visualizations
+
+When implementing a new visualization that does per-pixel work:
+- Use `SIN_LUT.get()` from `render.rs` instead of `f32::sin()` for trig
+- Implement `set_quantization_step` to receive the adaptive step (canvas-based: `self.canvas.set_step(step)`, direct-buffer: store as `self.quant_step` and pass to `quantize_color`)
+- Set `heavy_rendering() -> true` if the viz fills every cell with unique colors (enables auto-pause when unfocused in tmux)
+
+### User Controls
+
+| Key | Parameter | Range | Effect |
+|-----|-----------|-------|--------|
+| `+`/`-` | sensitivity | 0.1–5.0 | Scales spectrum amplitude |
+| `b`/`B` | beat_intensity | 0.0–3.0 | Scales beat envelope |
+| `]`/`[` | color_detail | 0.5–2.0 | Finer/coarser color quantization |
+| `s` | show_status_bar | toggle | Show/hide status bar |
+| Tab/Shift+Tab | visualization | cycle | Switch visualization mode |
