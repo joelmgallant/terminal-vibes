@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.1...v1.6.2) - 2026-03-09
+
+### Fixed
+
+- *(wasapi)* fix Windows compilation errors from CI
+
 ## [1.6.1](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.0...v1.6.1) - 2026-03-09
 
 ### Fixed
