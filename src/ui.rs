@@ -28,6 +28,10 @@ pub struct App {
     sensitivity: f32,
     beat_intensity: f32,
     color_detail: f32,
+    /// EMA of frame render time in seconds
+    render_time_ema: f32,
+    /// Auto-adjusted color detail (may be lower than user's setting)
+    effective_color_detail: f32,
     /// When the visualization was last switched (drives label fade).
     label_shown_at: Instant,
 }
@@ -66,6 +70,8 @@ impl App {
             sensitivity,
             beat_intensity,
             color_detail,
+            render_time_ema: 0.0,
+            effective_color_detail: color_detail,
             label_shown_at: Instant::now(),
         }
     }
@@ -137,12 +143,13 @@ impl App {
             let cell_count = term_size.width as u32 * term_size.height as u32;
             let quant_step = crate::visualizations::render::adaptive_quantization_step(
                 cell_count,
-                self.color_detail,
+                self.effective_color_detail,
             );
             self.registry.set_quantization_step(quant_step);
 
             self.registry.update_current(&display_frame);
 
+            let draw_start = Instant::now();
             terminal.draw(|f| {
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -218,6 +225,20 @@ impl App {
                     f.render_widget(status_bar, chunks[1]);
                 }
             })?;
+            let draw_elapsed = draw_start.elapsed().as_secs_f32();
+
+            // EMA with alpha ~1/30 (smooths over ~30 frames)
+            self.render_time_ema = self.render_time_ema * 0.97 + draw_elapsed * 0.03;
+
+            let frame_budget = frame_duration.as_secs_f32();
+            if self.render_time_ema > frame_budget * 0.8 {
+                // Struggling — reduce effective detail
+                self.effective_color_detail = (self.effective_color_detail - 0.1).max(0.5);
+            } else if self.render_time_ema < frame_budget * 0.5 {
+                // Headroom — recover toward user's chosen detail
+                self.effective_color_detail =
+                    (self.effective_color_detail + 0.1).min(self.color_detail);
+            }
 
             // Handle input
             let poll_timeout = frame_duration.saturating_sub(loop_start.elapsed());
@@ -283,10 +304,12 @@ impl App {
             }
             KeyCode::Char(']') => {
                 self.color_detail = (self.color_detail + 0.1).min(2.0);
+                self.effective_color_detail = self.color_detail;
                 true
             }
             KeyCode::Char('[') => {
                 self.color_detail = (self.color_detail - 0.1).max(0.5);
+                self.effective_color_detail = self.color_detail;
                 true
             }
             KeyCode::Char('s') => {
