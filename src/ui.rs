@@ -281,11 +281,11 @@ impl App {
                 self.beat_intensity = (self.beat_intensity - 0.1).max(0.0);
                 true
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char(']') => {
                 self.color_detail = (self.color_detail + 0.1).min(2.0);
                 true
             }
-            KeyCode::Char('D') => {
+            KeyCode::Char('[') => {
                 self.color_detail = (self.color_detail - 0.1).max(0.5);
                 true
             }
