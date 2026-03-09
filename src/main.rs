@@ -24,6 +24,7 @@ use ui::App;
 use visualizations::aurora::Aurora;
 use visualizations::life::Life;
 use visualizations::lissajous::Lissajous;
+use visualizations::milkdrop::Milkdrop;
 use visualizations::plasma::Plasma;
 use visualizations::radial::RadialSpectrum;
 use visualizations::rain::Rain;
@@ -95,6 +96,7 @@ fn main() -> Result<()> {
     registry.register(Box::new(Starfield::new()));
     registry.register(Box::new(Rain::new()));
     registry.register(Box::new(Life::new()));
+    registry.register(Box::new(Milkdrop::new()));
 
     // Set up processing -> UI channel
     let (frame_tx, frame_rx) = mpsc::sync_channel::<FrameData>(2);
