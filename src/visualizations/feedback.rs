@@ -9,6 +9,73 @@ pub enum BlendMode {
     Max,
 }
 
+/// Coarse displacement grid for warp transforms.
+/// Each grid point stores a (dx, dy) displacement vector.
+/// Pixels between grid points interpolate displacement bilinearly.
+#[allow(dead_code)]
+pub struct WarpGrid {
+    pub grid_w: usize,
+    pub grid_h: usize,
+    pub displacements: Vec<(f32, f32)>,
+}
+
+#[allow(dead_code)]
+impl WarpGrid {
+    pub fn new(grid_w: usize, grid_h: usize) -> Self {
+        Self {
+            grid_w,
+            grid_h,
+            displacements: vec![(0.0, 0.0); grid_w * grid_h],
+        }
+    }
+
+    #[inline]
+    pub fn set(&mut self, gx: usize, gy: usize, displacement: (f32, f32)) {
+        if gx < self.grid_w && gy < self.grid_h {
+            self.displacements[gy * self.grid_w + gx] = displacement;
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, gx: usize, gy: usize) -> (f32, f32) {
+        if gx < self.grid_w && gy < self.grid_h {
+            self.displacements[gy * self.grid_w + gx]
+        } else {
+            (0.0, 0.0)
+        }
+    }
+
+    /// Sample displacement at a fractional grid position using bilinear interpolation.
+    pub fn sample(&self, gx: f32, gy: f32) -> (f32, f32) {
+        let gx = gx.clamp(0.0, (self.grid_w - 1) as f32);
+        let gy = gy.clamp(0.0, (self.grid_h - 1) as f32);
+
+        let x0 = gx.floor() as usize;
+        let y0 = gy.floor() as usize;
+        let x1 = (x0 + 1).min(self.grid_w - 1);
+        let y1 = (y0 + 1).min(self.grid_h - 1);
+
+        let fx = gx - x0 as f32;
+        let fy = gy - y0 as f32;
+
+        let d00 = self.get(x0, y0);
+        let d10 = self.get(x1, y0);
+        let d01 = self.get(x0, y1);
+        let d11 = self.get(x1, y1);
+
+        let dx = d00.0 * (1.0 - fx) * (1.0 - fy)
+            + d10.0 * fx * (1.0 - fy)
+            + d01.0 * (1.0 - fx) * fy
+            + d11.0 * fx * fy;
+        let dy = d00.1 * (1.0 - fx) * (1.0 - fy)
+            + d10.1 * fx * (1.0 - fy)
+            + d01.1 * (1.0 - fx) * fy
+            + d11.1 * fx * fy;
+
+        (dx, dy)
+    }
+}
+
 /// Double-buffered float RGB canvas for MilkDrop-style feedback rendering.
 ///
 /// Two buffers at HalfBlockCanvas pixel resolution (cols × rows×2):
@@ -215,6 +282,36 @@ impl FeedbackCanvas {
                     let si = src_y as usize * self.width + src_x as usize;
                     let di = y * self.width + x;
                     self.back[di] = self.front[si];
+                }
+            }
+        }
+    }
+
+    /// Apply warp grid displacement: read from front, write displaced into back.
+    /// Each pixel's source position is offset by the interpolated grid displacement.
+    pub fn warp(&mut self, grid: &WarpGrid) {
+        if grid.grid_w < 2 || grid.grid_h < 2 {
+            // Degenerate grid — just copy front to back
+            self.back.copy_from_slice(&self.front);
+            return;
+        }
+        for y in 0..self.height {
+            let gy = y as f32 / self.height as f32 * (grid.grid_h - 1) as f32;
+            for x in 0..self.width {
+                let gx = x as f32 / self.width as f32 * (grid.grid_w - 1) as f32;
+                let (dx, dy) = grid.sample(gx, gy);
+                let src_x = (x as f32 - dx).round() as isize;
+                let src_y = (y as f32 - dy).round() as isize;
+                let di = y * self.width + x;
+                if src_x >= 0
+                    && src_y >= 0
+                    && (src_x as usize) < self.width
+                    && (src_y as usize) < self.height
+                {
+                    let si = src_y as usize * self.width + src_x as usize;
+                    self.back[di] = self.front[si];
+                } else {
+                    self.back[di] = (0.0, 0.0, 0.0);
                 }
             }
         }
@@ -474,5 +571,53 @@ mod tests {
         fb.rotate(10.0, 10.0, 0.5);
         let (r, _, _) = fb.get_back(10, 10);
         assert!(r > 0.5, "center of rotation should stay");
+    }
+
+    #[test]
+    fn test_warp_grid_new() {
+        let grid = WarpGrid::new(4, 3);
+        assert_eq!(grid.grid_w, 4);
+        assert_eq!(grid.grid_h, 3);
+        assert_eq!(grid.displacements.len(), 12);
+    }
+
+    #[test]
+    fn test_warp_grid_zero_displacement_is_identity() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        fb.set_back(10, 10, (0.8, 0.4, 0.2));
+        fb.swap();
+        let grid = WarpGrid::new(4, 4); // all zeros
+        fb.warp(&grid);
+        let (r, g, b) = fb.get_back(10, 10);
+        assert!((r - 0.8).abs() < 0.01);
+        assert!((g - 0.4).abs() < 0.01);
+        assert!((b - 0.2).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_warp_displaces_pixels() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        fb.set_back(10, 10, (1.0, 0.0, 0.0));
+        fb.swap();
+        let mut grid = WarpGrid::new(2, 2);
+        // Set all grid points to displace right by 3 pixels
+        for d in &mut grid.displacements {
+            *d = (3.0, 0.0);
+        }
+        fb.warp(&grid);
+        // Original pixel at (10,10) in back should be sourced from (10-3, 10) = (7,10) in front
+        // Since (7,10) was black, (10,10) should be black
+        let (r_orig, _, _) = fb.get_back(10, 10);
+        assert!(
+            r_orig < 0.01,
+            "original position should be empty after warp"
+        );
+    }
+
+    #[test]
+    fn test_warp_grid_set_get() {
+        let mut grid = WarpGrid::new(4, 3);
+        grid.set(1, 2, (0.5, -0.3));
+        assert_eq!(grid.get(1, 2), (0.5, -0.3));
     }
 }
