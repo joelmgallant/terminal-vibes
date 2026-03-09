@@ -32,6 +32,8 @@ pub struct App {
     render_time_ema: f32,
     /// Auto-adjusted color detail (may be lower than user's setting)
     effective_color_detail: f32,
+    /// Frame counter for rate-limiting budget adjustments
+    budget_adjust_counter: u32,
     /// When the visualization was last switched (drives label fade).
     label_shown_at: Instant,
 }
@@ -71,6 +73,7 @@ impl App {
             beat_intensity,
             color_detail,
             render_time_ema: 0.0,
+            budget_adjust_counter: 0,
             effective_color_detail: color_detail,
             label_shown_at: Instant::now(),
         }
@@ -230,14 +233,19 @@ impl App {
             // EMA with alpha ~1/30 (smooths over ~30 frames)
             self.render_time_ema = self.render_time_ema * 0.97 + draw_elapsed * 0.03;
 
-            let frame_budget = frame_duration.as_secs_f32();
-            if self.render_time_ema > frame_budget * 0.8 {
-                // Struggling — reduce effective detail
-                self.effective_color_detail = (self.effective_color_detail - 0.1).max(0.5);
-            } else if self.render_time_ema < frame_budget * 0.5 {
-                // Headroom — recover toward user's chosen detail
-                self.effective_color_detail =
-                    (self.effective_color_detail + 0.1).min(self.color_detail);
+            // Only adjust color detail every ~30 frames to prevent oscillation
+            self.budget_adjust_counter += 1;
+            if self.budget_adjust_counter >= 30 {
+                self.budget_adjust_counter = 0;
+                let frame_budget = frame_duration.as_secs_f32();
+                if self.render_time_ema > frame_budget * 0.8 {
+                    // Struggling — reduce effective detail
+                    self.effective_color_detail = (self.effective_color_detail - 0.1).max(0.5);
+                } else if self.render_time_ema < frame_budget * 0.5 {
+                    // Headroom — recover toward user's chosen detail
+                    self.effective_color_detail =
+                        (self.effective_color_detail + 0.1).min(self.color_detail);
+                }
             }
 
             // Handle input

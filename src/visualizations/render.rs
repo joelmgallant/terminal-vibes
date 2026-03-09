@@ -9,7 +9,7 @@ use ratatui::style::Color;
 /// escape sequence volume in terminal multiplexers like tmux.
 #[inline]
 pub fn quantize_color(color: Color, step: u8) -> Color {
-    debug_assert!(step > 0, "quantize_color step must be non-zero");
+    let step = step.max(1);
     match color {
         Color::Rgb(r, g, b) => Color::Rgb((r / step) * step, (g / step) * step, (b / step) * step),
         other => other,
