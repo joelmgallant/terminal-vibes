@@ -1,4 +1,5 @@
 pub mod aurora;
+pub mod life;
 pub mod lissajous;
 pub mod plasma;
 pub mod radial;
