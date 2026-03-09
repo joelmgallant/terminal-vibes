@@ -130,6 +130,43 @@ impl FeedbackCanvas {
             }
         }
     }
+
+    /// Draw a line using Bresenham's algorithm with the given blend mode.
+    pub fn paint_line(
+        &mut self,
+        x0: isize,
+        y0: isize,
+        x1: isize,
+        y1: isize,
+        color: (f32, f32, f32),
+        blend: BlendMode,
+    ) {
+        let dx = (x1 - x0).abs();
+        let dy = -(y1 - y0).abs();
+        let sx: isize = if x0 < x1 { 1 } else { -1 };
+        let sy: isize = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        let mut x = x0;
+        let mut y = y0;
+
+        loop {
+            if x >= 0 && y >= 0 {
+                self.paint(x as usize, y as usize, color, blend);
+            }
+            if x == x1 && y == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -267,5 +304,48 @@ mod tests {
     fn test_paint_out_of_bounds_no_panic() {
         let mut fb = FeedbackCanvas::new(10, 5);
         fb.paint(100, 100, (1.0, 1.0, 1.0), BlendMode::Additive);
+    }
+
+    #[test]
+    fn test_paint_line_horizontal() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.paint_line(0, 5, 9, 5, (1.0, 1.0, 1.0), BlendMode::Alpha);
+        // All pixels on y=5 from x=0 to x=9 should be set
+        for x in 0..10 {
+            assert_ne!(
+                fb.get_back(x, 5),
+                (0.0, 0.0, 0.0),
+                "pixel at ({x}, 5) should be set"
+            );
+        }
+    }
+
+    #[test]
+    fn test_paint_line_vertical() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.paint_line(5, 0, 5, 9, (1.0, 0.0, 0.0), BlendMode::Alpha);
+        for y in 0..10 {
+            assert_ne!(
+                fb.get_back(5, y),
+                (0.0, 0.0, 0.0),
+                "pixel at (5, {y}) should be set"
+            );
+        }
+    }
+
+    #[test]
+    fn test_paint_line_single_point() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.paint_line(3, 3, 3, 3, (0.5, 0.5, 0.5), BlendMode::Alpha);
+        assert_eq!(fb.get_back(3, 3), (0.5, 0.5, 0.5));
+    }
+
+    #[test]
+    fn test_paint_line_uses_blend_mode() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(5, 5, (0.3, 0.3, 0.3));
+        fb.paint_line(5, 5, 5, 5, (0.2, 0.2, 0.2), BlendMode::Additive);
+        let (r, _, _) = fb.get_back(5, 5);
+        assert!((r - 0.5).abs() < 0.001); // additive: 0.3 + 0.2
     }
 }
