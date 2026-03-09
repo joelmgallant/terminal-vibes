@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.5.0...v1.6.0) - 2026-03-09
+
+### Added
+
+- *(milkdrop)* increase rotation speed and mid-frequency reactivity
+- add help overlay (H) with per-visualization keybind reference
+
+### Other
+
+- Merge branch 'cross-platform-audio' into trunk
+- add cross-platform audio implementation plan
+- add cross-platform audio support design
+
 ## [1.5.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.4.0...v1.5.0) - 2026-03-09
 
 ### Added
