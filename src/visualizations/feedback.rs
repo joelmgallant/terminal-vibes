@@ -194,6 +194,31 @@ impl FeedbackCanvas {
             }
         }
     }
+
+    /// Rotate the front buffer into the back buffer around (cx, cy).
+    /// Uses nearest-neighbor sampling from front buffer.
+    pub fn rotate(&mut self, cx: f32, cy: f32, radians: f32) {
+        let cos = radians.cos();
+        let sin = radians.sin();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                // Inverse rotation to find source pixel
+                let src_x = (dx * cos + dy * sin + cx).round() as isize;
+                let src_y = (-dx * sin + dy * cos + cy).round() as isize;
+                if src_x >= 0
+                    && src_y >= 0
+                    && (src_x as usize) < self.width
+                    && (src_y as usize) < self.height
+                {
+                    let si = src_y as usize * self.width + src_x as usize;
+                    let di = y * self.width + x;
+                    self.back[di] = self.front[si];
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -415,5 +440,39 @@ mod tests {
         assert!((r - 0.7).abs() < 0.01);
         assert!((g - 0.3).abs() < 0.01);
         assert!((b - 0.1).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_rotate_zero_is_identity() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(7, 3, (0.8, 0.4, 0.2));
+        fb.swap();
+        fb.rotate(5.0, 5.0, 0.0);
+        let (r, g, b) = fb.get_back(7, 3);
+        assert!((r - 0.8).abs() < 0.01);
+        assert!((g - 0.4).abs() < 0.01);
+        assert!((b - 0.2).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_rotate_moves_pixels() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        // Put a pixel to the right of center
+        fb.set_back(15, 10, (1.0, 0.0, 0.0));
+        fb.swap();
+        fb.rotate(10.0, 10.0, std::f32::consts::FRAC_PI_2); // 90 degrees
+                                                            // After 90° CCW rotation, (15,10) should move to roughly (10,15)
+        let (r, _, _) = fb.get_back(15, 10);
+        assert!(r < 0.01, "original position should be empty after rotation");
+    }
+
+    #[test]
+    fn test_rotate_center_stays() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        fb.set_back(10, 10, (1.0, 1.0, 1.0));
+        fb.swap();
+        fb.rotate(10.0, 10.0, 0.5);
+        let (r, _, _) = fb.get_back(10, 10);
+        assert!(r > 0.5, "center of rotation should stay");
     }
 }
