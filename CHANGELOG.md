@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.4...v1.3.5) - 2026-03-09
+
+### Other
+
+- Merge branch 'game-of-life' into trunk
+- add .worktrees/ to gitignore
+- add Game of Life visualization design and implementation plan
+
 ## [1.3.4](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.3...v1.3.4) - 2026-03-09
 
 ### Other
