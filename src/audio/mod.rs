@@ -1,5 +1,6 @@
+#[cfg(target_os = "macos")]
 mod tap;
-
+#[cfg(target_os = "macos")]
 pub use tap::AudioTap;
 
 #[derive(Debug, Clone)]

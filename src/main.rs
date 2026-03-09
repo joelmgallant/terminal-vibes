@@ -78,10 +78,17 @@ fn main() -> Result<()> {
         sample_rate: 44100.0,
         channels: 2,
     };
-    let _audio_tap = AudioTap::new(producer, audio_config.clone()).context(
-        "Failed to start audio capture. \
-             Make sure you're on macOS 15+ and have granted audio permissions.",
-    )?;
+    let _audio_tap =
+        AudioTap::new(producer, audio_config.clone()).context(if cfg!(target_os = "macos") {
+            "Failed to start audio capture. \
+             Make sure you're on macOS 15+ and have granted audio permissions."
+        } else if cfg!(target_os = "windows") {
+            "Failed to start audio capture. \
+             Make sure an audio output device is available."
+        } else {
+            "Failed to start audio capture. \
+             Make sure PulseAudio or PipeWire is running."
+        })?;
 
     // Set up visualization registry
     let mut registry = VisualizationRegistry::new();

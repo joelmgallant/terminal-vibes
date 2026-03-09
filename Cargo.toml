@@ -2,7 +2,7 @@
 name = "terminal-vibes"
 version = "1.4.0"
 edition = "2021"
-description = "Terminal-based music visualizer for macOS system audio"
+description = "Terminal-based music visualizer for system audio"
 license = "MIT"
 repository = "https://github.com/joelmgallant/terminal-vibes"
 readme = "README.md"
