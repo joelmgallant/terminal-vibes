@@ -78,6 +78,25 @@ impl FeedbackCanvas {
             .map(|i| self.front[i])
             .unwrap_or((0.0, 0.0, 0.0))
     }
+
+    /// Swap front and back buffers. Previous frame's output becomes the
+    /// read source. Back buffer is zeroed for the new frame.
+    pub fn swap(&mut self) {
+        std::mem::swap(&mut self.front, &mut self.back);
+        for pixel in &mut self.back {
+            *pixel = (0.0, 0.0, 0.0);
+        }
+    }
+
+    /// Multiply all back-buffer pixels by factor (0.0–1.0).
+    /// Controls trail length: 0.95 = long trails, 0.8 = short trails.
+    pub fn decay(&mut self, factor: f32) {
+        for pixel in &mut self.back {
+            pixel.0 *= factor;
+            pixel.1 *= factor;
+            pixel.2 *= factor;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -124,5 +143,46 @@ mod tests {
         let mut fb = FeedbackCanvas::new(10, 5);
         fb.set_back(100, 100, (1.0, 1.0, 1.0)); // should not panic
         assert_eq!(fb.get_back(100, 100), (0.0, 0.0, 0.0)); // out of bounds returns black
+    }
+
+    #[test]
+    fn test_swap_moves_back_to_front() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(3, 3, (1.0, 0.5, 0.0));
+        assert_eq!(fb.get_front(3, 3), (0.0, 0.0, 0.0)); // front is still empty
+        fb.swap();
+        assert_eq!(fb.get_front(3, 3), (1.0, 0.5, 0.0)); // now it's in front
+    }
+
+    #[test]
+    fn test_swap_clears_back() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(3, 3, (1.0, 0.5, 0.0));
+        fb.swap();
+        assert_eq!(fb.get_back(3, 3), (0.0, 0.0, 0.0)); // back was cleared
+    }
+
+    #[test]
+    fn test_decay_fades_back_buffer() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (1.0, 1.0, 1.0));
+        fb.decay(0.9);
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!((r - 0.9).abs() < 0.001);
+        assert!((g - 0.9).abs() < 0.001);
+        assert!((b - 0.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_decay_repeated_converges_to_zero() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(0, 0, (1.0, 1.0, 1.0));
+        for _ in 0..100 {
+            fb.decay(0.9);
+        }
+        let (r, g, b) = fb.get_back(0, 0);
+        assert!(r < 0.001, "should fade to near-zero, got {r}");
+        assert!(g < 0.001);
+        assert!(b < 0.001);
     }
 }
