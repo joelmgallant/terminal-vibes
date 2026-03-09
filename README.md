@@ -266,11 +266,11 @@ Terminal rendering works by emitting ANSI escape sequences — each unique color
 
 ```mermaid
 flowchart LR
-    V["Visualization\nsets pixel colors"] --> Q["Quantize Color\n(bucket similar RGBs)"]
-    Q --> CB["Canvas Buffer\n(2D color grid)"]
-    CB --> RD["Ratatui Diff\n(skip unchanged cells)"]
-    RD --> ES["Emit Escape\nSequences"]
-    ES --> T["Terminal\nRenders Frame"]
+    V["Visualization<br/>sets pixel colors"] -->|"1000s of<br/>unique colors"| Q["Quantize Color<br/>(bucket similar RGBs)"]
+    Q -->|"100s of<br/>unique colors"| CB["Canvas Buffer"]
+    CB --> RD["Ratatui Diff<br/>(skip unchanged cells)"]
+    RD -->|"only changed<br/>cells emitted"| ES["Escape<br/>Sequences"]
+    ES --> T["Terminal"]
 
     style Q fill:#f9a825,stroke:#f57f17,color:#000
     style RD fill:#66bb6a,stroke:#388e3c,color:#000
@@ -282,38 +282,60 @@ Quantization and diffing are the two stages that reduce escape sequence volume �
 
 ```mermaid
 flowchart TD
-    subgraph without["Without Quantization (color_detail = 2.0)"]
+    subgraph without["❌ No Quantization"]
         direction LR
-        A1["RGB(17,33,129)"] --> E1["\\e[38;2;17;33;129m"]
-        A2["RGB(22,38,131)"] --> E2["\\e[38;2;22;38;131m"]
-        A3["RGB(18,35,130)"] --> E3["\\e[38;2;18;35;130m"]
-        A4["RGB(20,37,128)"] --> E4["\\e[38;2;20;37;128m"]
+        A1["RGB(130,50,200)"] --> E1["ESC 38;2;130;50;200"]
+        A2["RGB(140,55,195)"] --> E2["ESC 38;2;140;55;195"]
+        A3["RGB(30,200,180)"] --> E3["ESC 38;2;30;200;180"]
+        A4["RGB(40,195,175)"] --> E4["ESC 38;2;40;195;175"]
     end
 
-    subgraph with["With Quantization (step = 16)"]
+    without -.->|"quantize (step=16)"| with
+
+    subgraph with["✅ Quantized"]
         direction LR
-        B1["RGB(17,33,129)"] --> Q1["RGB(16,32,128)"] --> F1["\\e[38;2;16;32;128m"]
-        B2["RGB(22,38,131)"] --> Q2["RGB(16,32,128)"] --> F1
-        B3["RGB(18,35,130)"] --> Q3["RGB(16,32,128)"] --> F1
-        B4["RGB(20,37,128)"] --> Q4["RGB(16,32,128)"] --> F1
+        B1["RGB(130,50,200)"] --> QP["RGB(128,48,192)"]
+        B2["RGB(140,55,195)"] --> QP
+        B3["RGB(30,200,180)"] --> QT["RGB(32,192,176)"]
+        B4["RGB(40,195,175)"] --> QT
+        QP --> FP["ESC 38;2;128;48;192"]
+        QT --> FT["ESC 38;2;32;192;176"]
     end
+
+    style A1 fill:#8232C8,color:#fff,stroke:#fff
+    style A2 fill:#8C37C3,color:#fff,stroke:#fff
+    style E1 fill:#8232C8,color:#fff,stroke:#fff
+    style E2 fill:#8C37C3,color:#fff,stroke:#fff
+    style A3 fill:#1EC8B4,color:#fff,stroke:#333
+    style A4 fill:#28C3AF,color:#fff,stroke:#333
+    style E3 fill:#1EC8B4,color:#fff,stroke:#333
+    style E4 fill:#28C3AF,color:#fff,stroke:#333
+
+    style B1 fill:#8232C8,color:#fff,stroke:#fff
+    style B2 fill:#8C37C3,color:#fff,stroke:#fff
+    style QP fill:#8030C0,color:#fff,stroke:#fff
+    style FP fill:#8030C0,color:#fff,stroke:#4caf50,stroke-width:3px
+    style B3 fill:#1EC8B4,color:#fff,stroke:#333
+    style B4 fill:#28C3AF,color:#fff,stroke:#333
+    style QT fill:#20C0B0,color:#fff,stroke:#333
+    style FT fill:#20C0B0,color:#fff,stroke:#4caf50,stroke-width:3px
 
     style without fill:#ffcdd2,stroke:#c62828
     style with fill:#c8e6c9,stroke:#2e7d32
 ```
 
-4 unique colors → 4 escape sequences vs 4 colors bucketed → 1 escape sequence. At fullscreen that's thousands of sequences eliminated per frame.
+Similar colors are nearly identical to human eyes, yet without quantization each generates a separate escape sequence. With quantization, nearby colors bucket together — 4 sequences become 2. At fullscreen that's thousands of sequences eliminated per frame.
 
 #### Adaptive Quantization Feedback Loop
 
 ```mermaid
 flowchart TD
-    FB["Frame Budget Monitor\n(every ~30 frames)"] --> Check{"Frame time\n> budget?"}
-    Check -->|"Yes (too slow)"| Coarsen["Increase quant step\n→ fewer unique colors\n→ faster rendering"]
-    Check -->|"No (on budget)"| Fine["Decrease quant step\n→ more color fidelity"]
+    FB["Frame Budget Monitor<br/>(every ~30 frames)"] --> Check{"Frame time<br/>> budget?"}
+    Check -->|"Yes — too slow"| Coarsen["Increase quant step<br/>fewer unique colors<br/>faster rendering"]
+    Check -->|"No — on budget"| Fine["Decrease quant step<br/>more color fidelity"]
     Coarsen --> SQ["set_quantization_step()"]
     Fine --> SQ
-    SQ --> V["Visualization\nrenders next frame"]
+    SQ --> V["Visualization<br/>renders next frame"]
     V --> FB
 
     style Check fill:#fff9c4,stroke:#f9a825,color:#000
