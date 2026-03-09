@@ -4,7 +4,7 @@ use crate::processing::FrameData;
 use crate::visualizations::render::{quantize_color, BrailleCanvas, HalfBlockCanvas};
 use crate::visualizations::spectrum::ColorPalette;
 use crate::visualizations::Visualization;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -414,8 +414,54 @@ impl Visualization for Life {
         }
     }
 
-    fn on_key(&mut self, _key: KeyEvent) -> bool {
-        false // TODO: Task 5
+    fn on_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            KeyCode::Char('m') => {
+                self.render_mode = self.render_mode.next();
+                // Grid reinitializes on next render (dimensions change)
+                self.grid_width = 0;
+                self.grid_height = 0;
+                true
+            }
+            KeyCode::Char('r') => {
+                // Randomize: ~25% of cells alive
+                for cell in &mut self.current {
+                    let hash = self.frame_counter.wrapping_mul(2654435761);
+                    self.frame_counter = self.frame_counter.wrapping_add(1);
+                    cell.alive = (hash % 4) == 0;
+                    cell.age = 0;
+                }
+                true
+            }
+            KeyCode::Char('c') => {
+                for cell in &mut self.current {
+                    cell.alive = false;
+                    cell.age = 0;
+                }
+                true
+            }
+            KeyCode::Char('p') => {
+                let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
+                self.palette =
+                    ColorPalette::from_name(names[(idx + 1) % names.len()]).unwrap_or(self.palette);
+                true
+            }
+            KeyCode::Char('P') => {
+                let names: Vec<&str> = ColorPalette::ALL.iter().map(|p| p.name()).collect();
+                let idx = names
+                    .iter()
+                    .position(|n| *n == self.palette.name())
+                    .unwrap_or(0);
+                let prev = if idx == 0 { names.len() - 1 } else { idx - 1 };
+                self.palette = ColorPalette::from_name(names[prev]).unwrap_or(self.palette);
+                true
+            }
+            _ => false,
+        }
     }
 
     fn heavy_rendering(&self) -> bool {
