@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Terminal-based music visualizer for macOS. Captures system audio via Core Audio's `AudioProcessTap` API (requires macOS 15+) and renders real-time visualizations using ratatui in the terminal. 10 visualization modes, beat detection, and full TOML configuration.
+Terminal-based music visualizer. Captures system audio via platform-specific APIs (Core Audio on macOS, WASAPI on Windows, PulseAudio on Linux) and renders real-time visualizations using ratatui in the terminal. 10 visualization modes, beat detection, and full TOML configuration.
 
 ## Build & Development Commands
 
@@ -90,7 +90,9 @@ The `SinLut` static in `render.rs` provides a 4096-entry pre-computed sine looku
 - `config.rs` — TOML config with XDG paths (`~/.config/terminal-vibes/config.toml`)
 - `processing.rs` — FFT pipeline and `FrameData` production
 - `beat.rs` — Per-band beat detection, envelope tracking, energy analysis
-- `audio/tap.rs` — Core Audio FFI, `AudioTap` lifecycle (all unsafe code lives here)
+- `audio/tap.rs` — macOS: Core Audio FFI, `AudioTap` lifecycle (all unsafe code lives here)
+- `audio/wasapi.rs` — Windows: WASAPI loopback capture, polling capture thread
+- `audio/pulse.rs` — Linux: PulseAudio monitor source, blocking read capture thread
 - `audio/mod.rs` — `AudioConfig`, `AudioRingBuffer` types
 - `ui.rs` — Ratatui app shell, input handling, status bar, label fade, state persistence, frame budget monitoring
 - `visualizations/mod.rs` — `Visualization` trait definition
@@ -112,9 +114,12 @@ App state saved to `~/.config/terminal-vibes/state.toml`:
 
 ## Platform Constraints
 
-- **macOS only** — Core Audio FFI bindings in `audio/tap.rs`
-- **macOS 15+** — requires `AudioProcessTap` API
-- macOS-specific deps are gated with `[target.'cfg(target_os = "macos")'.dependencies]`
+- **macOS** — Core Audio `AudioProcessTap` API (requires macOS 15+)
+- **Windows** — WASAPI loopback capture via `windows` crate
+- **Linux** — PulseAudio monitor source via `libpulse-binding` (works with PipeWire's PulseAudio compat layer)
+- Platform-specific deps gated with `[target.'cfg(target_os = "...")'.dependencies]`
+- All audio backends export `AudioTap` with same API: `new(producer, config) -> Result<Self>` + `Drop`
+- Everything downstream of the ring buffer (FFT, beat detection, UI, visualizations) is cross-platform
 
 ## Adding a New Visualization
 
