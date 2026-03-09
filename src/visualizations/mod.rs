@@ -1,6 +1,8 @@
 pub mod aurora;
+pub mod feedback;
 pub mod life;
 pub mod lissajous;
+pub mod milkdrop;
 pub mod plasma;
 pub mod radial;
 pub mod rain;
