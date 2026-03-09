@@ -34,5 +34,9 @@ windows = { version = "0.58", features = [
     "Win32_Devices_Properties",
 ] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libpulse-binding = "2.28"
+libpulse-simple-binding = "2.28"
+
 [dev-dependencies]
 approx = "0.5"

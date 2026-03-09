@@ -8,6 +8,11 @@ mod wasapi;
 #[cfg(target_os = "windows")]
 pub use wasapi::AudioTap;
 
+#[cfg(target_os = "linux")]
+mod pulse;
+#[cfg(target_os = "linux")]
+pub use pulse::AudioTap;
+
 #[derive(Debug, Clone)]
 pub struct AudioConfig {
     pub sample_rate: f32,
