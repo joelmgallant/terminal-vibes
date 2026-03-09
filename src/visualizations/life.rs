@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
 use crate::processing::FrameData;
-use crate::visualizations::render::{BrailleCanvas, HalfBlockCanvas};
+use crate::visualizations::render::{quantize_color, BrailleCanvas, HalfBlockCanvas};
 use crate::visualizations::spectrum::ColorPalette;
 use crate::visualizations::Visualization;
 use crossterm::event::KeyEvent;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
 
 #[derive(Clone, Copy, PartialEq)]
 #[allow(dead_code)]
@@ -286,6 +287,84 @@ impl Life {
             RenderMode::Braille => (area.width as usize * 2, area.height as usize * 4),
         }
     }
+
+    /// Get color for a cell based on its age and the active palette.
+    fn cell_color(&self, age: u16) -> Color {
+        let t = (age as f32 / 200.0).min(1.0);
+        let base = self.palette.color(t);
+        let brightness = 0.3 + self.beat_envelope * 0.7;
+        match base {
+            Color::Rgb(r, g, b) => quantize_color(
+                Color::Rgb(
+                    (r as f32 * brightness) as u8,
+                    (g as f32 * brightness) as u8,
+                    (b as f32 * brightness) as u8,
+                ),
+                self.quant_step,
+            ),
+            other => other,
+        }
+    }
+
+    fn render_character(&self, area: Rect, buf: &mut Buffer) {
+        let w = self.grid_width;
+        let h = self.grid_height;
+        for y in 0..h.min(area.height as usize) {
+            for x in 0..w.min(area.width as usize) {
+                let cell = self.current[y * w + x];
+                if cell.alive {
+                    let ch = match cell.age {
+                        0..=5 => '█',
+                        6..=20 => '▓',
+                        21..=60 => '▒',
+                        _ => '░',
+                    };
+                    let color = self.cell_color(cell.age);
+                    buf[(area.x + x as u16, area.y + y as u16)]
+                        .set_char(ch)
+                        .set_fg(color);
+                }
+            }
+        }
+    }
+
+    fn render_halfblock(&mut self, area: Rect, buf: &mut Buffer) {
+        self.halfblock_canvas
+            .resize_or_clear(area.width, area.height);
+        let w = self.grid_width;
+        let h = self.grid_height;
+        let pw = self.halfblock_canvas.pixel_width();
+        let ph = self.halfblock_canvas.pixel_height();
+        for y in 0..h.min(ph) {
+            for x in 0..w.min(pw) {
+                let cell = self.current[y * w + x];
+                if cell.alive {
+                    let color = self.cell_color(cell.age);
+                    self.halfblock_canvas.set(x, y, color);
+                }
+            }
+        }
+        self.halfblock_canvas.render(&area, buf);
+    }
+
+    fn render_braille(&mut self, area: Rect, buf: &mut Buffer) {
+        self.braille_canvas.resize_or_clear(area.width, area.height);
+        let w = self.grid_width;
+        let h = self.grid_height;
+        let pw = self.braille_canvas.pixel_width();
+        let ph = self.braille_canvas.pixel_height();
+        // Use the color of the most common age — simplified to palette midpoint + beat
+        let color = self.cell_color(50);
+        for y in 0..h.min(ph) {
+            for x in 0..w.min(pw) {
+                let cell = self.current[y * w + x];
+                if cell.alive {
+                    self.braille_canvas.set(x, y);
+                }
+            }
+        }
+        self.braille_canvas.render(&area, buf, color);
+    }
 }
 
 impl Visualization for Life {
@@ -320,8 +399,19 @@ impl Visualization for Life {
         }
     }
 
-    fn render(&mut self, _area: Rect, _buf: &mut Buffer) {
-        // TODO: Task 4
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+
+        let (gw, gh) = self.grid_dims_for_area(area);
+        self.ensure_grid(gw, gh);
+
+        match self.render_mode {
+            RenderMode::Character => self.render_character(area, buf),
+            RenderMode::HalfBlock => self.render_halfblock(area, buf),
+            RenderMode::Braille => self.render_braille(area, buf),
+        }
     }
 
     fn on_key(&mut self, _key: KeyEvent) -> bool {
