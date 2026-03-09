@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::processing::FrameData;
 use crate::visualizations::render::{quantize_color, BrailleCanvas, HalfBlockCanvas};
 use crate::visualizations::spectrum::ColorPalette;
@@ -10,7 +8,6 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[allow(dead_code)]
 enum RenderMode {
     Character,
     HalfBlock,
@@ -18,7 +15,6 @@ enum RenderMode {
 }
 
 impl RenderMode {
-    #[allow(dead_code)]
     fn next(self) -> Self {
         match self {
             RenderMode::Character => RenderMode::HalfBlock,
@@ -46,13 +42,11 @@ impl RenderMode {
 }
 
 #[derive(Clone, Copy, Default)]
-#[allow(dead_code)]
 struct Cell {
     alive: bool,
     age: u16,
 }
 
-#[allow(dead_code)]
 pub struct Life {
     // Simulation state
     current: Vec<Cell>,
