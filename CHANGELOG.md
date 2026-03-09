@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.0...v1.3.1) - 2026-03-09
+
+### Fixed
+
+- raise radial brightness floor from 30% to 60%
+
 ## [1.3.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.2.0...v1.3.0) - 2026-03-09
 
 ### Added
