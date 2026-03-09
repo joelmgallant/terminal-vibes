@@ -9,7 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[allow(dead_code)]
 enum RenderMode {
     Character,
@@ -498,5 +498,179 @@ impl Visualization for Life {
                 self.palette = p;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_life_with_grid(width: usize, height: usize) -> Life {
+        let mut life = Life::new();
+        life.ensure_grid(width, height);
+        life
+    }
+
+    #[test]
+    fn test_count_neighbors_empty_grid() {
+        let life = make_life_with_grid(5, 5);
+        assert_eq!(life.count_neighbors(2, 2), 0);
+    }
+
+    #[test]
+    fn test_count_neighbors_surrounded() {
+        let mut life = make_life_with_grid(5, 5);
+        // Set all 8 neighbors of (2,2) alive
+        for dy in [1, 0, 4] {
+            // 4 wraps to -1 in mod 5
+            for dx in [1, 0, 4] {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let x = (2 + dx) % 5;
+                let y = (2 + dy) % 5;
+                life.current[y * 5 + x].alive = true;
+            }
+        }
+        assert_eq!(life.count_neighbors(2, 2), 8);
+    }
+
+    #[test]
+    fn test_toroidal_wrap() {
+        let mut life = make_life_with_grid(5, 5);
+        // Place cell at (4, 4) — neighbor of (0, 0) via wrapping
+        life.current[4 * 5 + 4].alive = true;
+        assert_eq!(life.count_neighbors(0, 0), 1);
+    }
+
+    #[test]
+    fn test_blinker_oscillates() {
+        let mut life = make_life_with_grid(5, 5);
+        // Horizontal blinker at row 2
+        life.current[2 * 5 + 1].alive = true;
+        life.current[2 * 5 + 2].alive = true;
+        life.current[2 * 5 + 3].alive = true;
+
+        // Zero audio envelopes so rules stay classic B3/S23
+        life.bass_envelope = 0.0;
+        life.treble_envelope = 0.0;
+
+        life.tick();
+
+        // Should become vertical blinker at col 2
+        assert!(!life.current[2 * 5 + 1].alive);
+        assert!(life.current[1 * 5 + 2].alive);
+        assert!(life.current[2 * 5 + 2].alive);
+        assert!(life.current[3 * 5 + 2].alive);
+        assert!(!life.current[2 * 5 + 3].alive);
+    }
+
+    #[test]
+    fn test_block_is_stable() {
+        let mut life = make_life_with_grid(6, 6);
+        // 2x2 block at (2,2)
+        life.current[2 * 6 + 2].alive = true;
+        life.current[2 * 6 + 3].alive = true;
+        life.current[3 * 6 + 2].alive = true;
+        life.current[3 * 6 + 3].alive = true;
+
+        life.bass_envelope = 0.0;
+        life.treble_envelope = 0.0;
+
+        life.tick();
+
+        assert!(life.current[2 * 6 + 2].alive);
+        assert!(life.current[2 * 6 + 3].alive);
+        assert!(life.current[3 * 6 + 2].alive);
+        assert!(life.current[3 * 6 + 3].alive);
+    }
+
+    #[test]
+    fn test_age_increments() {
+        let mut life = make_life_with_grid(6, 6);
+        // Block (stable pattern) — ages should increment each tick
+        life.current[2 * 6 + 2] = Cell {
+            alive: true,
+            age: 0,
+        };
+        life.current[2 * 6 + 3] = Cell {
+            alive: true,
+            age: 0,
+        };
+        life.current[3 * 6 + 2] = Cell {
+            alive: true,
+            age: 0,
+        };
+        life.current[3 * 6 + 3] = Cell {
+            alive: true,
+            age: 0,
+        };
+
+        life.bass_envelope = 0.0;
+        life.treble_envelope = 0.0;
+
+        life.tick();
+        assert_eq!(life.current[2 * 6 + 2].age, 1);
+
+        life.tick();
+        assert_eq!(life.current[2 * 6 + 2].age, 2);
+    }
+
+    #[test]
+    fn test_bass_envelope_enables_birth_on_two() {
+        let mut life = make_life_with_grid(5, 5);
+        // Two neighbors of (2,2) — normally not enough to birth
+        life.current[1 * 5 + 2].alive = true;
+        life.current[3 * 5 + 2].alive = true;
+
+        life.bass_envelope = 0.0;
+        life.treble_envelope = 0.0;
+        life.tick();
+        assert!(
+            !life.current[2 * 5 + 2].alive,
+            "Should not birth with 2 neighbors normally"
+        );
+
+        // Reset
+        life.current[2 * 5 + 2] = Cell::default();
+        life.current[1 * 5 + 2] = Cell {
+            alive: true,
+            age: 0,
+        };
+        life.current[3 * 5 + 2] = Cell {
+            alive: true,
+            age: 0,
+        };
+
+        // High bass envelope enables birth on 2
+        life.bass_envelope = 0.8;
+        life.treble_envelope = 0.0;
+        life.tick();
+        assert!(
+            life.current[2 * 5 + 2].alive,
+            "Should birth with 2 neighbors when bass is high"
+        );
+    }
+
+    #[test]
+    fn test_render_mode_cycling() {
+        assert_eq!(RenderMode::Character.next(), RenderMode::HalfBlock);
+        assert_eq!(RenderMode::HalfBlock.next(), RenderMode::Braille);
+        assert_eq!(RenderMode::Braille.next(), RenderMode::Character);
+    }
+
+    #[test]
+    fn test_grid_dims_for_area() {
+        let mut life = Life::new();
+        let area = Rect::new(0, 0, 80, 24);
+
+        life.render_mode = RenderMode::Character;
+        assert_eq!(life.grid_dims_for_area(area), (80, 24));
+
+        life.render_mode = RenderMode::HalfBlock;
+        assert_eq!(life.grid_dims_for_area(area), (80, 48));
+
+        life.render_mode = RenderMode::Braille;
+        assert_eq!(life.grid_dims_for_area(area), (160, 96));
     }
 }
