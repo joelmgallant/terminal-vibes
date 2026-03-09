@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.1...v1.3.2) - 2026-03-09
+
+### Other
+
+- add contribution guide and color detail performance explanation
+- update CLAUDE.md with fullscreen optimization details
+- add release process section to CLAUDE.md
+
 ## [1.3.1](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.0...v1.3.1) - 2026-03-09
 
 ### Fixed
