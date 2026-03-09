@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.4.0...v1.5.0) - 2026-03-09
+
+### Added
+
+- *(render)* fill full terminal area with black background for half-block canvases
+- *(milkdrop)* add dynamic reactivity controls for all transform parameters
+
 ## [1.4.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.5...v1.4.0) - 2026-03-09
 
 ### Added
