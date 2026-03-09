@@ -22,6 +22,7 @@ pub fn quantize_color(color: Color, step: u8) -> Color {
 pub struct BrailleCanvas {
     cols: u16,
     rows: u16,
+    step: u8,
     /// Flat pixel buffer: pixel_width * pixel_height bits stored as bytes
     pixels: Vec<bool>,
 }
@@ -39,11 +40,16 @@ const BRAILLE_DOT_MAP: [[u8; 4]; 2] = [
 #[allow(dead_code)]
 impl BrailleCanvas {
     pub fn new(cols: u16, rows: u16) -> Self {
+        Self::with_step(cols, rows, 16)
+    }
+
+    pub fn with_step(cols: u16, rows: u16, step: u8) -> Self {
         let pw = cols as usize * 2;
         let ph = rows as usize * 4;
         Self {
             cols,
             rows,
+            step,
             pixels: vec![false; pw * ph],
         }
     }
@@ -52,10 +58,14 @@ impl BrailleCanvas {
     /// Avoids per-frame heap allocations when the terminal size is stable.
     pub fn resize_or_clear(&mut self, cols: u16, rows: u16) {
         if self.cols != cols || self.rows != rows {
-            *self = Self::new(cols, rows);
+            *self = Self::with_step(cols, rows, self.step);
         } else {
             self.clear();
         }
+    }
+
+    pub fn set_step(&mut self, step: u8) {
+        self.step = step;
     }
 
     pub fn pixel_width(&self) -> usize {
@@ -80,7 +90,7 @@ impl BrailleCanvas {
 
     /// Render the pixel buffer into a ratatui Buffer using braille characters.
     pub fn render(&self, area: &Rect, buf: &mut Buffer, color: Color) {
-        let color = quantize_color(color, 16);
+        let color = quantize_color(color, self.step);
         let render_cols = self.cols.min(area.width);
         let render_rows = self.rows.min(area.height);
 
@@ -159,18 +169,24 @@ pub static SIN_LUT: LazyLock<SinLut> = LazyLock::new(SinLut::new);
 pub struct HalfBlockCanvas {
     cols: u16,
     rows: u16,
+    step: u8,
     /// Color per pixel: pixel_width * pixel_height, None = unset
-    pixels: Vec<Option<Color>>,
+    pub(crate) pixels: Vec<Option<Color>>,
 }
 
 #[allow(dead_code)]
 impl HalfBlockCanvas {
     pub fn new(cols: u16, rows: u16) -> Self {
+        Self::with_step(cols, rows, 16)
+    }
+
+    pub fn with_step(cols: u16, rows: u16, step: u8) -> Self {
         let pw = cols as usize;
         let ph = rows as usize * 2;
         Self {
             cols,
             rows,
+            step,
             pixels: vec![None; pw * ph],
         }
     }
@@ -179,10 +195,14 @@ impl HalfBlockCanvas {
     /// Avoids per-frame heap allocations when the terminal size is stable.
     pub fn resize_or_clear(&mut self, cols: u16, rows: u16) {
         if self.cols != cols || self.rows != rows {
-            *self = Self::new(cols, rows);
+            *self = Self::with_step(cols, rows, self.step);
         } else {
             self.clear();
         }
+    }
+
+    pub fn set_step(&mut self, step: u8) {
+        self.step = step;
     }
 
     pub fn pixel_width(&self) -> usize {
@@ -197,7 +217,7 @@ impl HalfBlockCanvas {
         let pw = self.pixel_width();
         let ph = self.pixel_height();
         if x < pw && y < ph {
-            self.pixels[y * pw + x] = Some(color);
+            self.pixels[y * pw + x] = Some(quantize_color(color, self.step));
         }
     }
 
@@ -214,8 +234,8 @@ impl HalfBlockCanvas {
             for cx in 0..render_cols {
                 let top_idx = (cy as usize * 2) * self.pixel_width() + cx as usize;
                 let bot_idx = (cy as usize * 2 + 1) * self.pixel_width() + cx as usize;
-                let top = self.pixels[top_idx].map(|c| quantize_color(c, 16));
-                let bot = self.pixels[bot_idx].map(|c| quantize_color(c, 16));
+                let top = self.pixels[top_idx];
+                let bot = self.pixels[bot_idx];
 
                 let cell = &mut buf[(area.x + cx, area.y + cy)];
                 match (top, bot) {
@@ -286,5 +306,20 @@ mod tests {
         let lut = SinLut::new();
         let val = 100.0 * PI + PI / 2.0;
         assert!((lut.get(val) - val.sin()).abs() < 0.002);
+    }
+
+    #[test]
+    fn halfblock_canvas_quantizes_at_set_time() {
+        let mut canvas = HalfBlockCanvas::with_step(2, 2, 16);
+        canvas.set(0, 0, Color::Rgb(17, 33, 255));
+        // The stored pixel should already be quantized
+        assert_eq!(canvas.pixels[0], Some(Color::Rgb(16, 32, 240)));
+    }
+
+    #[test]
+    fn halfblock_canvas_custom_step() {
+        let mut canvas = HalfBlockCanvas::with_step(2, 2, 32);
+        canvas.set(0, 0, Color::Rgb(33, 50, 255));
+        assert_eq!(canvas.pixels[0], Some(Color::Rgb(32, 32, 224)));
     }
 }
