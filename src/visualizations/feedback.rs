@@ -167,6 +167,33 @@ impl FeedbackCanvas {
             }
         }
     }
+
+    /// Zoom the front buffer into the back buffer around (cx, cy).
+    /// amount > 1.0 = zoom in (enlarge), < 1.0 = zoom out (shrink).
+    /// Uses nearest-neighbor sampling from front buffer.
+    pub fn zoom(&mut self, cx: f32, cy: f32, amount: f32) {
+        if amount <= 0.0 {
+            return;
+        }
+        let inv = 1.0 / amount;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                // Map back to source coordinates in front buffer
+                let src_x = ((x as f32 - cx) * inv + cx).round() as isize;
+                let src_y = ((y as f32 - cy) * inv + cy).round() as isize;
+                if src_x >= 0
+                    && src_y >= 0
+                    && (src_x as usize) < self.width
+                    && (src_y as usize) < self.height
+                {
+                    let si = src_y as usize * self.width + src_x as usize;
+                    let di = y * self.width + x;
+                    self.back[di] = self.front[si];
+                }
+                // out-of-bounds source → back pixel stays at (0,0,0)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -347,5 +374,46 @@ mod tests {
         fb.paint_line(5, 5, 5, 5, (0.2, 0.2, 0.2), BlendMode::Additive);
         let (r, _, _) = fb.get_back(5, 5);
         assert!((r - 0.5).abs() < 0.001); // additive: 0.3 + 0.2
+    }
+
+    #[test]
+    fn test_zoom_in_center_pixel_stays() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        // Put a pixel at center of front buffer
+        fb.set_back(5, 5, (1.0, 0.0, 0.0));
+        fb.swap(); // now it's in front
+        fb.zoom(5.0, 5.0, 1.1); // zoom in slightly
+                                // Center pixel should still be approximately at center in back
+        let (r, _, _) = fb.get_back(5, 5);
+        assert!(r > 0.5, "center pixel should remain after zoom, got {r}");
+    }
+
+    #[test]
+    fn test_zoom_out_shrinks() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        // Fill front buffer with a white square in center
+        for y in 8..12 {
+            for x in 8..12 {
+                fb.set_back(x, y, (1.0, 1.0, 1.0));
+            }
+        }
+        fb.swap();
+        fb.zoom(10.0, 10.0, 0.5); // zoom out = shrink
+                                  // Corners of original square should now be closer to center
+                                  // Edge pixels should be black (zoomed out beyond original)
+        let (r, _, _) = fb.get_back(0, 0);
+        assert!(r < 0.01, "corner should be black after zoom out");
+    }
+
+    #[test]
+    fn test_zoom_identity() {
+        let mut fb = FeedbackCanvas::new(10, 5);
+        fb.set_back(3, 4, (0.7, 0.3, 0.1));
+        fb.swap();
+        fb.zoom(5.0, 5.0, 1.0); // no zoom
+        let (r, g, b) = fb.get_back(3, 4);
+        assert!((r - 0.7).abs() < 0.01);
+        assert!((g - 0.3).abs() < 0.01);
+        assert!((b - 0.1).abs() < 0.01);
     }
 }
