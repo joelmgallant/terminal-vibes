@@ -388,7 +388,7 @@ impl Visualization for Life {
         // Tick simulation every 2 frames (~30 gen/sec at 60fps)
         // Extra tick on beat for time acceleration
         self.tick_counter = self.tick_counter.wrapping_add(1);
-        if self.tick_counter % 2 == 0 || self.beat_fired {
+        if self.tick_counter.is_multiple_of(2) || self.beat_fired {
             self.tick();
         }
     }
@@ -431,7 +431,7 @@ impl Visualization for Life {
                 for cell in &mut self.current {
                     let hash = self.frame_counter.wrapping_mul(2654435761);
                     self.frame_counter = self.frame_counter.wrapping_add(1);
-                    cell.alive = (hash % 4) == 0;
+                    cell.alive = hash.is_multiple_of(4);
                     cell.age = 0;
                 }
                 true
