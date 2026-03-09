@@ -16,6 +16,21 @@ pub fn quantize_color(color: Color, step: u8) -> Color {
     }
 }
 
+/// Compute quantization step based on terminal cell count and user color detail preference.
+/// Higher cell count → coarser step (more perf). Higher detail → finer step (more fidelity).
+#[allow(dead_code)]
+pub fn adaptive_quantization_step(cell_count: u32, color_detail: f32) -> u8 {
+    let base = if cell_count < 4000 {
+        16u8
+    } else if cell_count < 10000 {
+        24u8
+    } else {
+        32u8
+    };
+    let adjusted = (base as f32 / color_detail).round() as u8;
+    adjusted.clamp(4, 64)
+}
+
 /// A 2D pixel canvas that maps to Unicode braille characters (U+2800 block).
 /// Each terminal cell is a 2x4 dot matrix, giving 2x horizontal and 4x vertical
 /// sub-cell resolution.
@@ -321,5 +336,41 @@ mod tests {
         let mut canvas = HalfBlockCanvas::with_step(2, 2, 32);
         canvas.set(0, 0, Color::Rgb(33, 50, 255));
         assert_eq!(canvas.pixels[0], Some(Color::Rgb(32, 32, 224)));
+    }
+
+    #[test]
+    fn adaptive_step_small_terminal() {
+        // 80x24 = 1920 cells
+        assert_eq!(adaptive_quantization_step(1920, 1.0), 16);
+    }
+
+    #[test]
+    fn adaptive_step_medium_terminal() {
+        // 150x50 = 7500 cells
+        assert_eq!(adaptive_quantization_step(7500, 1.0), 24);
+    }
+
+    #[test]
+    fn adaptive_step_large_terminal() {
+        // 200x60 = 12000 cells
+        assert_eq!(adaptive_quantization_step(12000, 1.0), 32);
+    }
+
+    #[test]
+    fn adaptive_step_detail_doubles_precision() {
+        // Large terminal but detail=2.0 → step halved
+        assert_eq!(adaptive_quantization_step(12000, 2.0), 16);
+    }
+
+    #[test]
+    fn adaptive_step_detail_halves_precision() {
+        // Small terminal but detail=0.5 → step doubled
+        assert_eq!(adaptive_quantization_step(1920, 0.5), 32);
+    }
+
+    #[test]
+    fn adaptive_step_clamps_minimum() {
+        // Never go below 4 (still 64 values per channel)
+        assert_eq!(adaptive_quantization_step(100, 2.0), 8);
     }
 }
