@@ -262,7 +262,64 @@ There are two ways to render, depending on what you're building:
 
 Terminal rendering works by emitting ANSI escape sequences — each unique color requires a separate sequence like `\e[38;2;R;G;Bm`. When a visualization fills every cell with a slightly different RGB value, the terminal has to process thousands of unique escape sequences per frame. This is the dominant bottleneck, especially in terminal multiplexers like tmux where every escape sequence passes through an extra parsing layer.
 
-Color quantization fixes this by bucketing similar colors together. With a step of 16, `RGB(17, 33, 129)` and `RGB(22, 38, 131)` both become `RGB(16, 32, 128)` — same escape sequence, no extra work. Ratatui's internal buffer diff then sees more "unchanged" cells between frames and skips re-emitting them entirely.
+#### Rendering Pipeline
+
+```mermaid
+flowchart LR
+    V["Visualization\nsets pixel colors"] --> Q["Quantize Color\n(bucket similar RGBs)"]
+    Q --> CB["Canvas Buffer\n(2D color grid)"]
+    CB --> RD["Ratatui Diff\n(skip unchanged cells)"]
+    RD --> ES["Emit Escape\nSequences"]
+    ES --> T["Terminal\nRenders Frame"]
+
+    style Q fill:#f9a825,stroke:#f57f17,color:#000
+    style RD fill:#66bb6a,stroke:#388e3c,color:#000
+```
+
+Quantization and diffing are the two stages that reduce escape sequence volume — quantization makes more cells "look the same" to the differ, and the differ skips re-emitting unchanged cells.
+
+#### Without vs With Color Quantization
+
+```mermaid
+flowchart TD
+    subgraph without["Without Quantization (color_detail = 2.0)"]
+        direction LR
+        A1["RGB(17,33,129)"] --> E1["\\e[38;2;17;33;129m"]
+        A2["RGB(22,38,131)"] --> E2["\\e[38;2;22;38;131m"]
+        A3["RGB(18,35,130)"] --> E3["\\e[38;2;18;35;130m"]
+        A4["RGB(20,37,128)"] --> E4["\\e[38;2;20;37;128m"]
+    end
+
+    subgraph with["With Quantization (step = 16)"]
+        direction LR
+        B1["RGB(17,33,129)"] --> Q1["RGB(16,32,128)"] --> F1["\\e[38;2;16;32;128m"]
+        B2["RGB(22,38,131)"] --> Q2["RGB(16,32,128)"] --> F1
+        B3["RGB(18,35,130)"] --> Q3["RGB(16,32,128)"] --> F1
+        B4["RGB(20,37,128)"] --> Q4["RGB(16,32,128)"] --> F1
+    end
+
+    style without fill:#ffcdd2,stroke:#c62828
+    style with fill:#c8e6c9,stroke:#2e7d32
+```
+
+4 unique colors → 4 escape sequences vs 4 colors bucketed → 1 escape sequence. At fullscreen that's thousands of sequences eliminated per frame.
+
+#### Adaptive Quantization Feedback Loop
+
+```mermaid
+flowchart TD
+    FB["Frame Budget Monitor\n(every ~30 frames)"] --> Check{"Frame time\n> budget?"}
+    Check -->|"Yes (too slow)"| Coarsen["Increase quant step\n→ fewer unique colors\n→ faster rendering"]
+    Check -->|"No (on budget)"| Fine["Decrease quant step\n→ more color fidelity"]
+    Coarsen --> SQ["set_quantization_step()"]
+    Fine --> SQ
+    SQ --> V["Visualization\nrenders next frame"]
+    V --> FB
+
+    style Check fill:#fff9c4,stroke:#f9a825,color:#000
+    style Coarsen fill:#ffcdd2,stroke:#c62828,color:#000
+    style Fine fill:#c8e6c9,stroke:#2e7d32,color:#000
+```
 
 The `color_detail` control (`]`/`[`) lets you tune this tradeoff in real-time. Higher detail = more unique colors = more escape sequences = more CPU. Lower detail = fewer colors = fewer sequences = smoother rendering. The frame budget monitor handles this automatically, but manual control is there when you want it.
 
