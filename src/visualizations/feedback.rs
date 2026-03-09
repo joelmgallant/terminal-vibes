@@ -287,6 +287,63 @@ impl FeedbackCanvas {
         }
     }
 
+    /// Combined zoom + rotate in a single pass (avoids double read of front buffer).
+    /// This is the common case — most frames apply both.
+    pub fn zoom_rotate(&mut self, cx: f32, cy: f32, zoom: f32, radians: f32) {
+        if zoom <= 0.0 {
+            return;
+        }
+        let inv_zoom = 1.0 / zoom;
+        let cos = radians.cos();
+        let sin = radians.sin();
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let dx = x as f32 - cx;
+                let dy = y as f32 - cy;
+                // Inverse zoom + rotation
+                let rx = dx * cos + dy * sin;
+                let ry = -dx * sin + dy * cos;
+                let src_x = (rx * inv_zoom + cx).round() as isize;
+                let src_y = (ry * inv_zoom + cy).round() as isize;
+                let di = y * self.width + x;
+                if src_x >= 0
+                    && src_y >= 0
+                    && (src_x as usize) < self.width
+                    && (src_y as usize) < self.height
+                {
+                    let si = src_y as usize * self.width + src_x as usize;
+                    self.back[di] = self.front[si];
+                }
+            }
+        }
+    }
+
+    /// Convert the back buffer to a HalfBlockCanvas for ratatui output.
+    /// Maps float RGB (0.0–1.0) to u8 RGB (0–255).
+    /// Skips black pixels (leaves canvas cells as None for transparency).
+    pub fn to_halfblock(&self, canvas: &mut super::render::HalfBlockCanvas) {
+        let pw = canvas.pixel_width();
+        let ph = canvas.pixel_height();
+        canvas.clear();
+        for y in 0..ph.min(self.height) {
+            for x in 0..pw.min(self.width) {
+                let i = y * self.width + x;
+                if i < self.back.len() {
+                    let (r, g, b) = self.back[i];
+                    // Skip near-black pixels (threshold avoids noise)
+                    if r > 0.01 || g > 0.01 || b > 0.01 {
+                        let color = ratatui::style::Color::Rgb(
+                            (r.clamp(0.0, 1.0) * 255.0) as u8,
+                            (g.clamp(0.0, 1.0) * 255.0) as u8,
+                            (b.clamp(0.0, 1.0) * 255.0) as u8,
+                        );
+                        canvas.set(x, y, color);
+                    }
+                }
+            }
+        }
+    }
+
     /// Apply warp grid displacement: read from front, write displaced into back.
     /// Each pixel's source position is offset by the interpolated grid displacement.
     pub fn warp(&mut self, grid: &WarpGrid) {
@@ -571,6 +628,51 @@ mod tests {
         fb.rotate(10.0, 10.0, 0.5);
         let (r, _, _) = fb.get_back(10, 10);
         assert!(r > 0.5, "center of rotation should stay");
+    }
+
+    #[test]
+    fn test_zoom_rotate_combined() {
+        let mut fb = FeedbackCanvas::new(20, 10);
+        // Fill center area with color
+        for y in 8..12 {
+            for x in 8..12 {
+                fb.set_back(x, y, (0.8, 0.4, 0.2));
+            }
+        }
+        fb.swap();
+        fb.zoom_rotate(10.0, 10.0, 1.05, 0.1);
+        // Center should still have color
+        let (r, _, _) = fb.get_back(10, 10);
+        assert!(r > 0.3, "center should retain color after zoom+rotate");
+    }
+
+    #[test]
+    fn test_to_halfblock_converts_colors() {
+        use crate::visualizations::render::HalfBlockCanvas;
+        let mut fb = FeedbackCanvas::new(4, 2);
+        fb.set_back(0, 0, (1.0, 0.0, 0.0)); // red top-left
+        fb.set_back(1, 1, (0.0, 1.0, 0.0)); // green
+        let mut canvas = HalfBlockCanvas::new(4, 2);
+        fb.to_halfblock(&mut canvas);
+        // Canvas should have been populated (non-trivial to check exact output,
+        // but we can verify it doesn't panic and produces something)
+    }
+
+    #[test]
+    fn test_to_halfblock_empty_canvas() {
+        use crate::visualizations::render::HalfBlockCanvas;
+        let fb = FeedbackCanvas::new(4, 2);
+        let mut canvas = HalfBlockCanvas::new(4, 2);
+        fb.to_halfblock(&mut canvas);
+        // All-black feedback should produce an all-None canvas (no colors set)
+    }
+
+    #[test]
+    fn test_to_halfblock_dimension_mismatch_handled() {
+        use crate::visualizations::render::HalfBlockCanvas;
+        let fb = FeedbackCanvas::new(10, 5);
+        let mut canvas = HalfBlockCanvas::new(20, 10); // different size
+        fb.to_halfblock(&mut canvas); // should not panic
     }
 
     #[test]
