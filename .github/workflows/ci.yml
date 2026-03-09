@@ -37,4 +37,4 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Tests
-        run: cargo test --lib
+        run: cargo test --lib --test audio_boundary_test

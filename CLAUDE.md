@@ -32,14 +32,14 @@ cargo fmt                    # Format
 
 ```
 Audio Thread          Processing Thread       Main Thread (UI)
-┌──────────┐         ┌──────────────┐        ┌──────────────────┐
-│ CoreAudio │──ring──▶│ FFT Pipeline │──mpsc─▶│  Ratatui Loop    │
-│ Callback  │ buffer  │   @60 Hz     │channel │  @60 FPS (raw)   │
-└──────────┘         └──────────────┘        │  @30 FPS (tmux)  │
+┌─────────────┐      ┌──────────────┐        ┌──────────────────┐
+│    Audio     │─ring─▶│ FFT Pipeline │──mpsc─▶│  Ratatui Loop    │
+│   Capture    │buffer │   @60 Hz     │channel │  @60 FPS (raw)   │
+└─────────────┘      └──────────────┘        │  @30 FPS (tmux)  │
                                               └──────────────────┘
 ```
 
-- **Audio Thread**: Core Audio callback writes f32 PCM samples into a lock-free SPSC ring buffer. Must never block or allocate.
+- **Audio Thread**: Platform-specific audio backend captures system audio and writes mono f32 PCM samples into a lock-free SPSC ring buffer. On macOS, this is a real-time Core Audio callback (must not block or allocate). On Windows/Linux, this is a dedicated capture thread.
 - **Processing Thread**: Polls ring buffer at ~60Hz, runs FFT pipeline (Hann window → FFT → magnitude → log band binning → dB → normalize → EMA smoothing), sends `FrameData` via bounded `mpsc::sync_channel(2)`. Drops frames if channel full.
 - **Main Thread**: Ratatui event loop, drains latest `FrameData`, delegates to active visualization plugin for update+render.
 
