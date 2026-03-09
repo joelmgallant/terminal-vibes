@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.5...v1.4.0) - 2026-03-09
+
+### Added
+
+- add milkdrop visualization with feedback rendering, paint layers, and config
+- add zoom_rotate and to_halfblock conversion to FeedbackCanvas
+- add WarpGrid and warp transform to FeedbackCanvas
+- add rotate transform to FeedbackCanvas
+- add zoom transform to FeedbackCanvas
+- add Bresenham line drawing to FeedbackCanvas
+- add BlendMode and paint operation to FeedbackCanvas
+- add FeedbackCanvas swap and decay operations
+- add FeedbackCanvas core struct with double-buffered float RGB
+
+### Other
+
+- Merge branch 'milkdrop-paint-on' into trunk
+
 ## [1.3.5](https://github.com/joelmgallant/terminal-vibes/compare/v1.3.4...v1.3.5) - 2026-03-09
 
 ### Other
