@@ -82,7 +82,7 @@ impl Milkdrop {
             beat_envelope: 0.0,
 
             base_zoom: 1.003,
-            rotation_speed: 0.002,
+            rotation_speed: 0.005,
             warp_intensity: 0.5,
             decay_factor: 0.92,
             reactivity: 0.5,
@@ -131,7 +131,7 @@ impl Milkdrop {
         let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
 
         // Rotation: base speed + mid-driven, scaled by reactivity
-        self.rotation_angle += (self.rotation_speed + self.mid * 0.015 * r) * beat_boost;
+        self.rotation_angle += (self.rotation_speed + self.mid * 0.03 * r) * beat_boost;
 
         // Warp grid: treble drives ripple, scaled by intensity and reactivity
         let ripple = self.treble * self.warp_intensity * r * 1.5 * beat_boost;
@@ -477,7 +477,7 @@ impl Visualization for Milkdrop {
         );
         table.insert("decay_factor".to_string(), toml::Value::Float(0.92));
         table.insert("base_zoom".to_string(), toml::Value::Float(1.003));
-        table.insert("rotation_speed".to_string(), toml::Value::Float(0.002));
+        table.insert("rotation_speed".to_string(), toml::Value::Float(0.005));
         table.insert("warp_intensity".to_string(), toml::Value::Float(0.5));
         table.insert("reactivity".to_string(), toml::Value::Float(0.5));
         table.insert("waveform_enabled".to_string(), toml::Value::Boolean(true));
