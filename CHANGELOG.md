@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.2.0...v1.3.0) - 2026-03-09
+
+### Added
+
+- add color_detail control with adaptive quantization
+- add adaptive quantization step based on terminal size and color detail
+
+### Fixed
+
+- prevent frame budget oscillation and step=0 division
+- remap color_detail keys from d/D to [/] to avoid starfield conflict
+- restore SinLut removed by Task 2 and add step=0 guard
+
+### Other
+
+- add frame time budget monitoring with auto color detail adjustment
+- default to 60fps when not running in tmux
+- quantize colors at canvas set-time for better ratatui diffing
+- parameterize quantize_color step size
+- add fullscreen optimizations implementation plan
+- add fullscreen rendering optimizations design
+
 ## [1.2.0](https://github.com/joelmgallant/terminal-vibes/compare/v1.1.0...v1.2.0) - 2026-03-08
 
 ### Added
