@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use windows::core::Interface;
 use windows::Win32::Media::Audio::*;
 use windows::Win32::System::Com::*;
 
@@ -61,6 +60,7 @@ impl AudioTap {
         unsafe {
             // Initialize COM for this thread
             CoInitializeEx(None, COINIT_MULTITHREADED)
+                .ok()
                 .map_err(|e| anyhow!("COM init failed: {}", e))?;
 
             let result = Self::capture_loop_inner(&mut producer, channels, running, init_tx);
@@ -98,12 +98,13 @@ impl AudioTap {
 
         let sample_rate = mix_format.nSamplesPerSec;
         let device_channels = mix_format.nChannels;
+        let bits_per_sample = mix_format.wBitsPerSample;
 
         log::debug!(
             "WASAPI device format: {}Hz, {} channels, {} bits",
             sample_rate,
             device_channels,
-            mix_format.wBitsPerSample
+            bits_per_sample
         );
 
         // Initialize in loopback mode
