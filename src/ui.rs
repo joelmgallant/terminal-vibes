@@ -82,7 +82,7 @@ impl App {
         let effective_fps = if in_tmux {
             self.config.display.fps.min(30)
         } else {
-            self.config.display.fps
+            self.config.display.fps.max(60)
         };
         let frame_duration = Duration::from_millis(1000 / effective_fps.max(1) as u64);
         let mut last_frame = FrameData::default();
