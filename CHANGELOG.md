@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.4](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.3...v1.6.4) - 2026-03-10
+
+### Fixed
+
+- *(milkdrop)* fix rotation accumulation bug and enhance warp effect
+
 ## [1.6.3](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.2...v1.6.3) - 2026-03-09
 
 ### Other
