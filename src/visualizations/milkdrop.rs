@@ -83,7 +83,7 @@ impl Milkdrop {
 
             base_zoom: 1.003,
             rotation_speed: 0.005,
-            warp_intensity: 0.5,
+            warp_intensity: 1.5,
             decay_factor: 0.92,
             reactivity: 0.5,
 
@@ -130,12 +130,16 @@ impl Milkdrop {
         let r = self.reactivity;
         let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
 
-        // Rotation: base speed + mid-driven, scaled by reactivity
-        self.rotation_angle += (self.rotation_speed + self.mid * 0.03 * r) * beat_boost;
+        // Rotation: per-frame delta (feedback loop naturally accumulates rotation)
+        self.rotation_angle = (self.rotation_speed + self.mid * 0.03 * r) * beat_boost;
+
+        // Warp oscillates slowly over time (±50% of base intensity)
+        let warp_osc = SIN_LUT.get(self.time * 0.3);
+        let effective_warp = self.warp_intensity * (1.0 + 0.5 * warp_osc);
 
         // Warp grid: treble drives ripple, scaled by intensity and reactivity
-        let ripple = self.treble * self.warp_intensity * r * 1.5 * beat_boost;
-        let radial_push = self.warp_intensity * 0.3;
+        let ripple = self.treble * effective_warp * r * 1.5 * beat_boost;
+        let radial_push = effective_warp * 0.3;
         for gy in 0..WARP_GRID_H {
             for gx in 0..WARP_GRID_W {
                 let nx = gx as f32 / (WARP_GRID_W - 1) as f32 * 2.0 - 1.0;
@@ -478,7 +482,7 @@ impl Visualization for Milkdrop {
         table.insert("decay_factor".to_string(), toml::Value::Float(0.92));
         table.insert("base_zoom".to_string(), toml::Value::Float(1.003));
         table.insert("rotation_speed".to_string(), toml::Value::Float(0.005));
-        table.insert("warp_intensity".to_string(), toml::Value::Float(0.5));
+        table.insert("warp_intensity".to_string(), toml::Value::Float(1.5));
         table.insert("reactivity".to_string(), toml::Value::Float(0.5));
         table.insert("waveform_enabled".to_string(), toml::Value::Boolean(true));
         table.insert("shapes_enabled".to_string(), toml::Value::Boolean(true));
