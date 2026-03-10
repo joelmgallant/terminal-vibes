@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.5](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.4...v1.6.5) - 2026-03-10
+
+### Other
+
+- fix Mermaid diagram text cutoff in Safari
+
 ## [1.6.4](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.3...v1.6.4) - 2026-03-10
 
 ### Fixed
