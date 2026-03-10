@@ -278,10 +278,10 @@ Terminal rendering works by emitting ANSI escape sequences — each unique color
 
 ```mermaid
 flowchart LR
-    V["Visualization<br/>sets pixel colors"] -->|"1000s of<br/>unique colors"| Q["Quantize Color<br/>(bucket similar RGBs)"]
-    Q -->|"100s of<br/>unique colors"| CB["Canvas Buffer"]
-    CB --> RD["Ratatui Diff<br/>(skip unchanged cells)"]
-    RD -->|"only changed<br/>cells emitted"| ES["Escape<br/>Sequences"]
+    V["Visualization: set pixel colors"] -->|"1000s of unique colors"| Q["Quantize Color: bucket similar RGBs"]
+    Q -->|"100s of unique colors"| CB["Canvas Buffer"]
+    CB --> RD["Ratatui Diff: skip unchanged cells"]
+    RD -->|"only changed cells emitted"| ES["Escape Sequences"]
     ES --> T["Terminal"]
 
     style Q fill:#f9a825,stroke:#f57f17,color:#000
@@ -294,24 +294,24 @@ Quantization and diffing are the two stages that reduce escape sequence volume �
 
 ```mermaid
 flowchart TD
-    subgraph without["❌ No Quantization"]
+    subgraph without["No Quantization"]
         direction LR
-        A1["RGB(130,50,200)"] --> E1["ESC 38;2;130;50;200"]
-        A2["RGB(140,55,195)"] --> E2["ESC 38;2;140;55;195"]
-        A3["RGB(30,200,180)"] --> E3["ESC 38;2;30;200;180"]
-        A4["RGB(40,195,175)"] --> E4["ESC 38;2;40;195;175"]
+        A1["RGB 130,50,200"] --> E1["ESC 130;50;200"]
+        A2["RGB 140,55,195"] --> E2["ESC 140;55;195"]
+        A3["RGB 30,200,180"] --> E3["ESC 30;200;180"]
+        A4["RGB 40,195,175"] --> E4["ESC 40;195;175"]
     end
 
-    without -.->|"quantize (step=16)"| with
+    without -.->|"quantize step=16"| with
 
-    subgraph with["✅ Quantized"]
+    subgraph with["Quantized"]
         direction LR
-        B1["RGB(130,50,200)"] --> QP["RGB(128,48,192)"]
-        B2["RGB(140,55,195)"] --> QP
-        B3["RGB(30,200,180)"] --> QT["RGB(32,192,176)"]
-        B4["RGB(40,195,175)"] --> QT
-        QP --> FP["ESC 38;2;128;48;192"]
-        QT --> FT["ESC 38;2;32;192;176"]
+        B1["RGB 130,50,200"] --> QP["RGB 128,48,192"]
+        B2["RGB 140,55,195"] --> QP
+        B3["RGB 30,200,180"] --> QT["RGB 32,192,176"]
+        B4["RGB 40,195,175"] --> QT
+        QP --> FP["ESC 128;48;192"]
+        QT --> FT["ESC 32;192;176"]
     end
 
     style A1 fill:#8232C8,color:#fff,stroke:#fff
@@ -342,12 +342,12 @@ Similar colors are nearly identical to human eyes, yet without quantization each
 
 ```mermaid
 flowchart TD
-    FB["Frame Budget Monitor<br/>(every ~30 frames)"] --> Check{"Frame time<br/>> budget?"}
-    Check -->|"Yes — too slow"| Coarsen["Increase quant step<br/>fewer unique colors<br/>faster rendering"]
-    Check -->|"No — on budget"| Fine["Decrease quant step<br/>more color fidelity"]
-    Coarsen --> SQ["set_quantization_step()"]
+    FB["Frame Budget Monitor: every ~30 frames"] --> Check{"Frame time > budget?"}
+    Check -->|"Yes, too slow"| Coarsen["Increase quant step: fewer colors, faster"]
+    Check -->|"No, on budget"| Fine["Decrease quant step: more color fidelity"]
+    Coarsen --> SQ["set_quantization_step"]
     Fine --> SQ
-    SQ --> V["Visualization<br/>renders next frame"]
+    SQ --> V["Visualization renders next frame"]
     V --> FB
 
     style Check fill:#fff9c4,stroke:#f9a825,color:#000
