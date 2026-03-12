@@ -10,6 +10,89 @@ use std::f32::consts::PI;
 const WARP_GRID_W: usize = 16;
 const WARP_GRID_H: usize = 12;
 
+/// Polar radius function: takes normalized parameter t (0..1 around the circle)
+/// and animation time, returns a radius multiplier.
+type PolarFn = fn(t: f32, time: f32) -> f32;
+
+struct ShapePreset {
+    name: &'static str,
+    radius_fn: PolarFn,
+    base_radius_scale: f32,
+    brightness: f32,
+    hue_offset: f32,
+}
+
+const SHAPE_PRESETS: [ShapePreset; 5] = [
+    ShapePreset {
+        name: "circle",
+        radius_fn: shape_circle,
+        base_radius_scale: 1.0,
+        brightness: 0.7,
+        hue_offset: 0.0,
+    },
+    ShapePreset {
+        name: "polygon",
+        radius_fn: shape_polygon_default,
+        base_radius_scale: 0.9,
+        brightness: 0.8,
+        hue_offset: 0.1,
+    },
+    ShapePreset {
+        name: "star",
+        radius_fn: shape_star,
+        base_radius_scale: 1.1,
+        brightness: 0.9,
+        hue_offset: 0.2,
+    },
+    ShapePreset {
+        name: "rose",
+        radius_fn: shape_rose,
+        base_radius_scale: 1.2,
+        brightness: 0.6,
+        hue_offset: 0.35,
+    },
+    ShapePreset {
+        name: "spiral",
+        radius_fn: shape_spiral,
+        base_radius_scale: 0.8,
+        brightness: 0.75,
+        hue_offset: 0.5,
+    },
+];
+
+fn shape_circle(_t: f32, _time: f32) -> f32 {
+    1.0
+}
+
+/// Polygon with configurable sides. Standalone version used by tests.
+fn shape_polygon(t: f32, _time: f32, sides: u8) -> f32 {
+    let n = sides as f32;
+    let angle = t * 2.0 * PI;
+    let sector = PI / n;
+    // Distance from center to polygon edge at this angle
+    sector.cos() / ((angle % (2.0 * sector)) - sector).cos().abs().max(0.001)
+}
+
+/// Default polygon (hexagon) for use in the SHAPE_PRESETS const array.
+fn shape_polygon_default(t: f32, time: f32) -> f32 {
+    shape_polygon(t, time, 6)
+}
+
+fn shape_star(t: f32, _time: f32) -> f32 {
+    let angle = t * 2.0 * PI;
+    0.5 + 0.5 * (5.0 * angle).sin().abs()
+}
+
+fn shape_rose(t: f32, _time: f32) -> f32 {
+    let angle = t * 2.0 * PI;
+    (3.0 * angle).cos().abs()
+}
+
+fn shape_spiral(t: f32, _time: f32) -> f32 {
+    // t goes 0..1, spiral wraps 3 revolutions so dots spread outward
+    0.3 + 0.7 * t
+}
+
 pub struct Milkdrop {
     feedback: FeedbackCanvas,
     canvas: HalfBlockCanvas,
@@ -49,6 +132,17 @@ pub struct Milkdrop {
     // Spectrum data (kept for shapes layer)
     spectrum: Vec<f32>,
     waveform_data: Vec<f32>,
+
+    // Shape cycling state
+    shape_index: usize,
+    next_shape_index: usize,
+    morph_t: f32,
+    morphing: bool,
+    morph_speed: f32,
+    cycle_timer: f32,
+    cycle_interval: f32,
+    morph_cooldown: f32,
+    polygon_sides: u8,
 }
 
 struct Particle {
@@ -100,6 +194,16 @@ impl Milkdrop {
 
             spectrum: Vec::new(),
             waveform_data: Vec::new(),
+
+            shape_index: 0,
+            next_shape_index: 0,
+            morph_t: 0.0,
+            morphing: false,
+            morph_speed: 0.02,
+            cycle_timer: 0.0,
+            cycle_interval: 10.0,
+            morph_cooldown: 0.0,
+            polygon_sides: 6,
         }
     }
 
@@ -156,6 +260,8 @@ impl Milkdrop {
 
         // Time advance
         self.time += 0.015 + self.rms * 0.03 * r;
+
+        self.update_shape_cycle();
     }
 
     /// Compute effective zoom for this frame from base + audio.
@@ -163,6 +269,40 @@ impl Milkdrop {
         let r = self.reactivity;
         let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
         (self.base_zoom + self.bass * 0.025 * r) * beat_boost
+    }
+
+    fn update_shape_cycle(&mut self) {
+        let dt = 0.016_f32; // ~60fps frame time
+
+        if self.morphing {
+            self.morph_t += self.morph_speed;
+            if self.morph_t >= 1.0 {
+                // Morph complete — snap to target
+                self.shape_index = self.next_shape_index;
+                self.morph_t = 0.0;
+                self.morphing = false;
+                self.morph_cooldown = 3.0; // 3 second cooldown
+            }
+        } else {
+            self.cycle_timer += dt;
+            self.morph_cooldown = (self.morph_cooldown - dt).max(0.0);
+
+            let should_trigger = self.cycle_timer >= self.cycle_interval
+                || (self.beat_envelope > 0.7 && self.morph_cooldown <= 0.0);
+
+            if should_trigger {
+                self.next_shape_index = (self.shape_index + 1) % SHAPE_PRESETS.len();
+                self.morph_t = 0.0;
+                self.morphing = true;
+                self.cycle_timer = 0.0;
+
+                // Pick random polygon sides when polygon is the target
+                if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                    // Deterministic pseudo-random from time: 3 + (time_bits % 4) -> 3..=6
+                    self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                }
+            }
+        }
     }
 
     fn paint_waveform(&mut self) {
@@ -217,35 +357,69 @@ impl Milkdrop {
             return;
         }
 
+        use crate::visualizations::render::{lerp, smoothstep};
+
         let cx = pw as f32 / 2.0;
         let cy = ph as f32 / 2.0;
         let base_radius = (pw.min(ph) as f32) * 0.15;
         let r = self.reactivity;
-        let radius = base_radius * (1.0 + self.bass * 2.0 * r + self.beat_envelope * 0.5 * r);
+        let audio_scale = 1.0 + self.bass * 2.0 * r + self.beat_envelope * 0.5 * r;
+
+        let preset_a = &SHAPE_PRESETS[self.shape_index];
+        let preset_b = &SHAPE_PRESETS[self.next_shape_index];
+        let blend = if self.morphing {
+            smoothstep(self.morph_t)
+        } else {
+            0.0
+        };
+
+        let eff_radius_scale = lerp(
+            preset_a.base_radius_scale,
+            preset_b.base_radius_scale,
+            blend,
+        );
+        let eff_brightness_base = lerp(preset_a.brightness, preset_b.brightness, blend);
+        let eff_hue_offset = lerp(preset_a.hue_offset, preset_b.hue_offset, blend);
 
         let num_dots = self.spectrum.len().min(64);
         for i in 0..num_dots {
             let t = i as f32 / num_dots as f32;
             let angle = t * 2.0 * PI + self.time * 0.5;
+
+            // Evaluate both shapes' polar functions
+            let r_a = self.eval_shape(self.shape_index, t);
+            let r_b = self.eval_shape(self.next_shape_index, t);
+            let shape_r = lerp(r_a, r_b, blend);
+
             let mag = self.spectrum.get(i).copied().unwrap_or(0.0);
-            let dot_r = radius * (0.5 + mag * 0.5);
+            let dot_r = base_radius * eff_radius_scale * audio_scale * shape_r * (0.5 + mag * 0.5);
             let x = (cx + dot_r * SIN_LUT.get(angle + PI / 2.0)).round() as usize;
             let y = (cy + dot_r * SIN_LUT.get(angle)).round() as usize;
 
-            let color = self.palette.color(t);
+            let color = self.palette.color((t + eff_hue_offset).fract());
             let (cr, cg, cb) = match color {
                 ratatui::style::Color::Rgb(r, g, b) => {
                     (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
                 }
                 _ => (1.0, 1.0, 1.0),
             };
-            let brightness = 0.3 + mag * 0.7;
+            let brightness = eff_brightness_base * (0.4 + mag * 0.6);
             self.feedback.paint(
                 x,
                 y,
                 (cr * brightness, cg * brightness, cb * brightness),
                 BlendMode::Additive,
             );
+        }
+    }
+
+    /// Evaluate a shape's polar function, handling polygon's variable side count.
+    fn eval_shape(&self, index: usize, t: f32) -> f32 {
+        let preset = &SHAPE_PRESETS[index];
+        if preset.name == "polygon" {
+            shape_polygon(t, self.time, self.polygon_sides)
+        } else {
+            (preset.radius_fn)(t, self.time)
         }
     }
 
@@ -386,6 +560,7 @@ impl Visualization for Milkdrop {
             ("c/C", "warp intensity"),
             ("v/V", "reactivity"),
             ("p/P", "palette"),
+            ("n/N", "next/prev shape"),
         ]
     }
 
@@ -467,6 +642,35 @@ impl Visualization for Milkdrop {
                     .unwrap_or(0);
                 self.palette = ColorPalette::ALL
                     [(idx + ColorPalette::ALL.len() - 1) % ColorPalette::ALL.len()];
+                true
+            }
+            // Manual shape cycling
+            KeyCode::Char('n') => {
+                if !self.morphing {
+                    self.next_shape_index = (self.shape_index + 1) % SHAPE_PRESETS.len();
+                    self.morph_t = 0.0;
+                    self.morphing = true;
+                    self.cycle_timer = 0.0;
+                    if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                        self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                    }
+                }
+                true
+            }
+            KeyCode::Char('N') => {
+                if !self.morphing {
+                    self.next_shape_index = if self.shape_index == 0 {
+                        SHAPE_PRESETS.len() - 1
+                    } else {
+                        self.shape_index - 1
+                    };
+                    self.morph_t = 0.0;
+                    self.morphing = true;
+                    self.cycle_timer = 0.0;
+                    if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                        self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                    }
+                }
                 true
             }
             _ => false,
@@ -561,5 +765,173 @@ impl Visualization for Milkdrop {
             toml::Value::Boolean(self.particles_enabled),
         );
         toml::Value::Table(table)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shape_circle_constant() {
+        assert!((shape_circle(0.0, 0.0) - 1.0).abs() < f32::EPSILON);
+        assert!((shape_circle(0.5, 10.0) - 1.0).abs() < f32::EPSILON);
+        assert!((shape_circle(1.0, 99.0) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_shape_star_has_peaks_and_valleys() {
+        // Peak at t=0.05: 5 * 2π * 0.05 = π/2, sin(π/2)=1 → value=1.0
+        // Valley at t=0: sin(0)=0 → value=0.5
+        let peak = shape_star(0.05, 0.0);
+        let valley = shape_star(0.0, 0.0);
+        assert!(peak > valley, "star peaks should exceed valleys");
+        for i in 0..100 {
+            let v = shape_star(i as f32 / 100.0, 0.0);
+            assert!(v >= 0.49 && v <= 1.01, "star value {v} out of range");
+        }
+    }
+
+    #[test]
+    fn test_shape_rose_symmetric() {
+        for i in 0..100 {
+            let v = shape_rose(i as f32 / 100.0, 0.0);
+            assert!(v >= -0.01 && v <= 1.01, "rose value {v} out of range");
+        }
+    }
+
+    #[test]
+    fn test_shape_spiral_grows_with_t() {
+        let r1 = shape_spiral(0.0, 0.0);
+        let r2 = shape_spiral(0.5, 0.0);
+        let r3 = shape_spiral(1.0, 0.0);
+        assert!(r3 > r2, "spiral should grow: r3={r3} > r2={r2}");
+        assert!(r2 > r1, "spiral should grow: r2={r2} > r1={r1}");
+    }
+
+    #[test]
+    fn test_shape_polygon_nonzero() {
+        for sides in 3..=6 {
+            for i in 0..64 {
+                let v = shape_polygon(i as f32 / 64.0, 0.0, sides);
+                assert!(
+                    v > 0.0,
+                    "polygon sides={sides} t={} gave {v}",
+                    i as f32 / 64.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_morph_timer_triggers_transition() {
+        let mut m = Milkdrop::new();
+        assert!(!m.morphing);
+        assert_eq!(m.shape_index, 0);
+
+        // Simulate enough time passing to trigger auto-cycle
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert!(m.morphing, "should start morphing after timer expires");
+        assert_eq!(m.next_shape_index, 1);
+    }
+
+    #[test]
+    fn test_morph_beat_triggers_early_transition() {
+        let mut m = Milkdrop::new();
+        m.cycle_timer = 5.0; // not at interval yet
+        m.beat_envelope = 0.8; // strong beat
+        m.update_shape_cycle();
+        assert!(m.morphing, "strong beat should trigger early transition");
+    }
+
+    #[test]
+    fn test_morph_cooldown_prevents_rapid_retrigger() {
+        let mut m = Milkdrop::new();
+        // Trigger a transition
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert!(m.morphing);
+
+        // Complete the morph
+        m.morph_t = 1.0;
+        m.update_shape_cycle();
+        assert!(!m.morphing);
+        assert_eq!(m.shape_index, 1);
+
+        // Immediately try beat trigger — should be blocked by cooldown
+        m.beat_envelope = 0.9;
+        m.cycle_timer = 0.5; // well within cooldown
+        m.update_shape_cycle();
+        assert!(!m.morphing, "cooldown should prevent re-trigger");
+    }
+
+    #[test]
+    fn test_morph_completes_and_snaps() {
+        let mut m = Milkdrop::new();
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle(); // start morph
+        assert!(m.morphing);
+        assert_eq!(m.next_shape_index, 1);
+
+        // Push morph_t past 1.0
+        m.morph_t = 1.05;
+        m.update_shape_cycle();
+        assert!(!m.morphing, "morph should complete");
+        assert_eq!(m.shape_index, 1, "should snap to next shape");
+    }
+
+    #[test]
+    fn test_morph_wraps_around_shape_list() {
+        let mut m = Milkdrop::new();
+        m.shape_index = SHAPE_PRESETS.len() - 1; // last shape
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert_eq!(m.next_shape_index, 0, "should wrap to first shape");
+    }
+
+    #[test]
+    fn test_paint_shapes_mid_morph_no_panic() {
+        let mut m = Milkdrop::new();
+        m.morphing = true;
+        m.shape_index = 0;
+        m.next_shape_index = 2; // circle -> star
+        m.morph_t = 0.5;
+        m.spectrum = vec![0.5; 128];
+
+        let frame = FrameData {
+            spectrum: vec![0.5; 128],
+            waveform: vec![0.3; 1024],
+            peak: 0.7,
+            rms: 0.5,
+            ..Default::default()
+        };
+        m.update(&frame);
+
+        let area = Rect::new(0, 0, 40, 20);
+        let mut buf = Buffer::empty(area);
+        m.render(area, &mut buf);
+        // Should not panic — rendering with interpolated shapes works
+    }
+
+    #[test]
+    fn test_shapes_survive_full_cycle() {
+        let mut m = Milkdrop::new();
+        let frame = FrameData {
+            spectrum: vec![0.6; 128],
+            waveform: vec![0.3; 1024],
+            peak: 0.7,
+            rms: 0.5,
+            ..Default::default()
+        };
+        let area = Rect::new(0, 0, 40, 20);
+
+        // Run enough frames to cycle through all shapes
+        for _ in 0..5000 {
+            m.update(&frame);
+            let mut buf = Buffer::empty(area);
+            m.render(area, &mut buf);
+        }
+        // Should survive without panic through multiple full cycles
     }
 }
