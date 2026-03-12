@@ -10,6 +10,98 @@ use std::f32::consts::PI;
 const WARP_GRID_W: usize = 16;
 const WARP_GRID_H: usize = 12;
 
+/// Polar radius function: takes normalized parameter t (0..1 around the circle)
+/// and animation time, returns a radius multiplier.
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+type PolarFn = fn(t: f32, time: f32) -> f32;
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+struct ShapePreset {
+    name: &'static str,
+    radius_fn: PolarFn,
+    base_radius_scale: f32,
+    brightness: f32,
+    hue_offset: f32,
+}
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+const SHAPE_PRESETS: [ShapePreset; 5] = [
+    ShapePreset {
+        name: "circle",
+        radius_fn: shape_circle,
+        base_radius_scale: 1.0,
+        brightness: 0.7,
+        hue_offset: 0.0,
+    },
+    ShapePreset {
+        name: "polygon",
+        radius_fn: shape_polygon_default,
+        base_radius_scale: 0.9,
+        brightness: 0.8,
+        hue_offset: 0.1,
+    },
+    ShapePreset {
+        name: "star",
+        radius_fn: shape_star,
+        base_radius_scale: 1.1,
+        brightness: 0.9,
+        hue_offset: 0.2,
+    },
+    ShapePreset {
+        name: "rose",
+        radius_fn: shape_rose,
+        base_radius_scale: 1.2,
+        brightness: 0.6,
+        hue_offset: 0.35,
+    },
+    ShapePreset {
+        name: "spiral",
+        radius_fn: shape_spiral,
+        base_radius_scale: 0.8,
+        brightness: 0.75,
+        hue_offset: 0.5,
+    },
+];
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+fn shape_circle(_t: f32, _time: f32) -> f32 {
+    1.0
+}
+
+/// Polygon with configurable sides. Standalone version used by tests.
+#[allow(dead_code)] // Used by tests and shape cycling
+fn shape_polygon(t: f32, _time: f32, sides: u8) -> f32 {
+    let n = sides as f32;
+    let angle = t * 2.0 * PI;
+    let sector = PI / n;
+    // Distance from center to polygon edge at this angle
+    sector.cos() / ((angle % (2.0 * sector)) - sector).cos().abs().max(0.001)
+}
+
+/// Default polygon (hexagon) for use in the SHAPE_PRESETS const array.
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+fn shape_polygon_default(t: f32, time: f32) -> f32 {
+    shape_polygon(t, time, 6)
+}
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+fn shape_star(t: f32, _time: f32) -> f32 {
+    let angle = t * 2.0 * PI;
+    0.5 + 0.5 * (5.0 * angle).sin().abs()
+}
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+fn shape_rose(t: f32, _time: f32) -> f32 {
+    let angle = t * 2.0 * PI;
+    (3.0 * angle).cos().abs()
+}
+
+#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
+fn shape_spiral(t: f32, _time: f32) -> f32 {
+    // t goes 0..1, spiral wraps 3 revolutions so dots spread outward
+    0.3 + 0.7 * t
+}
+
 pub struct Milkdrop {
     feedback: FeedbackCanvas,
     canvas: HalfBlockCanvas,
@@ -561,5 +653,62 @@ impl Visualization for Milkdrop {
             toml::Value::Boolean(self.particles_enabled),
         );
         toml::Value::Table(table)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::PI;
+
+    #[test]
+    fn test_shape_circle_constant() {
+        assert!((shape_circle(0.0, 0.0) - 1.0).abs() < f32::EPSILON);
+        assert!((shape_circle(0.5, 10.0) - 1.0).abs() < f32::EPSILON);
+        assert!((shape_circle(1.0, 99.0) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_shape_star_has_peaks_and_valleys() {
+        // Peak at t=0.05: 5 * 2π * 0.05 = π/2, sin(π/2)=1 → value=1.0
+        // Valley at t=0: sin(0)=0 → value=0.5
+        let peak = shape_star(0.05, 0.0);
+        let valley = shape_star(0.0, 0.0);
+        assert!(peak > valley, "star peaks should exceed valleys");
+        for i in 0..100 {
+            let v = shape_star(i as f32 / 100.0, 0.0);
+            assert!(v >= 0.49 && v <= 1.01, "star value {v} out of range");
+        }
+    }
+
+    #[test]
+    fn test_shape_rose_symmetric() {
+        for i in 0..100 {
+            let v = shape_rose(i as f32 / 100.0, 0.0);
+            assert!(v >= -0.01 && v <= 1.01, "rose value {v} out of range");
+        }
+    }
+
+    #[test]
+    fn test_shape_spiral_grows_with_t() {
+        let r1 = shape_spiral(0.0, 0.0);
+        let r2 = shape_spiral(0.5, 0.0);
+        let r3 = shape_spiral(1.0, 0.0);
+        assert!(r3 > r2, "spiral should grow: r3={r3} > r2={r2}");
+        assert!(r2 > r1, "spiral should grow: r2={r2} > r1={r1}");
+    }
+
+    #[test]
+    fn test_shape_polygon_nonzero() {
+        for sides in 3..=6 {
+            for i in 0..64 {
+                let v = shape_polygon(i as f32 / 64.0, 0.0, sides);
+                assert!(
+                    v > 0.0,
+                    "polygon sides={sides} t={} gave {v}",
+                    i as f32 / 64.0
+                );
+            }
+        }
     }
 }
