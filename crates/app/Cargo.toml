@@ -4,6 +4,7 @@ version = "1.7.0"
 edition = "2021"
 description = "Terminal-based music visualizer for system audio"
 license = "MIT"
+publish = false
 repository = "https://github.com/joelmgallant/terminal-vibes"
 readme = "../../README.md"
 keywords = ["audio", "visualizer", "terminal", "music", "tui"]
