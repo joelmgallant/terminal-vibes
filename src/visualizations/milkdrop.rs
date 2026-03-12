@@ -141,6 +141,17 @@ pub struct Milkdrop {
     // Spectrum data (kept for shapes layer)
     spectrum: Vec<f32>,
     waveform_data: Vec<f32>,
+
+    // Shape cycling state
+    shape_index: usize,
+    next_shape_index: usize,
+    morph_t: f32,
+    morphing: bool,
+    morph_speed: f32,
+    cycle_timer: f32,
+    cycle_interval: f32,
+    morph_cooldown: f32,
+    polygon_sides: u8,
 }
 
 struct Particle {
@@ -192,6 +203,16 @@ impl Milkdrop {
 
             spectrum: Vec::new(),
             waveform_data: Vec::new(),
+
+            shape_index: 0,
+            next_shape_index: 0,
+            morph_t: 0.0,
+            morphing: false,
+            morph_speed: 0.02,
+            cycle_timer: 0.0,
+            cycle_interval: 10.0,
+            morph_cooldown: 0.0,
+            polygon_sides: 6,
         }
     }
 
@@ -248,6 +269,8 @@ impl Milkdrop {
 
         // Time advance
         self.time += 0.015 + self.rms * 0.03 * r;
+
+        self.update_shape_cycle();
     }
 
     /// Compute effective zoom for this frame from base + audio.
@@ -255,6 +278,40 @@ impl Milkdrop {
         let r = self.reactivity;
         let beat_boost = 1.0 + self.beat_envelope * 0.5 * r;
         (self.base_zoom + self.bass * 0.025 * r) * beat_boost
+    }
+
+    fn update_shape_cycle(&mut self) {
+        let dt = 0.016_f32; // ~60fps frame time
+
+        if self.morphing {
+            self.morph_t += self.morph_speed;
+            if self.morph_t >= 1.0 {
+                // Morph complete — snap to target
+                self.shape_index = self.next_shape_index;
+                self.morph_t = 0.0;
+                self.morphing = false;
+                self.morph_cooldown = 3.0; // 3 second cooldown
+            }
+        } else {
+            self.cycle_timer += dt;
+            self.morph_cooldown = (self.morph_cooldown - dt).max(0.0);
+
+            let should_trigger = self.cycle_timer >= self.cycle_interval
+                || (self.beat_envelope > 0.7 && self.morph_cooldown <= 0.0);
+
+            if should_trigger {
+                self.next_shape_index = (self.shape_index + 1) % SHAPE_PRESETS.len();
+                self.morph_t = 0.0;
+                self.morphing = true;
+                self.cycle_timer = 0.0;
+
+                // Pick random polygon sides when polygon is the target
+                if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                    // Deterministic pseudo-random from time: 3 + (time_bits % 4) -> 3..=6
+                    self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                }
+            }
+        }
     }
 
     fn paint_waveform(&mut self) {
@@ -710,5 +767,72 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_morph_timer_triggers_transition() {
+        let mut m = Milkdrop::new();
+        assert!(!m.morphing);
+        assert_eq!(m.shape_index, 0);
+
+        // Simulate enough time passing to trigger auto-cycle
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert!(m.morphing, "should start morphing after timer expires");
+        assert_eq!(m.next_shape_index, 1);
+    }
+
+    #[test]
+    fn test_morph_beat_triggers_early_transition() {
+        let mut m = Milkdrop::new();
+        m.cycle_timer = 5.0; // not at interval yet
+        m.beat_envelope = 0.8; // strong beat
+        m.update_shape_cycle();
+        assert!(m.morphing, "strong beat should trigger early transition");
+    }
+
+    #[test]
+    fn test_morph_cooldown_prevents_rapid_retrigger() {
+        let mut m = Milkdrop::new();
+        // Trigger a transition
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert!(m.morphing);
+
+        // Complete the morph
+        m.morph_t = 1.0;
+        m.update_shape_cycle();
+        assert!(!m.morphing);
+        assert_eq!(m.shape_index, 1);
+
+        // Immediately try beat trigger — should be blocked by cooldown
+        m.beat_envelope = 0.9;
+        m.cycle_timer = 0.5; // well within cooldown
+        m.update_shape_cycle();
+        assert!(!m.morphing, "cooldown should prevent re-trigger");
+    }
+
+    #[test]
+    fn test_morph_completes_and_snaps() {
+        let mut m = Milkdrop::new();
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle(); // start morph
+        assert!(m.morphing);
+        assert_eq!(m.next_shape_index, 1);
+
+        // Push morph_t past 1.0
+        m.morph_t = 1.05;
+        m.update_shape_cycle();
+        assert!(!m.morphing, "morph should complete");
+        assert_eq!(m.shape_index, 1, "should snap to next shape");
+    }
+
+    #[test]
+    fn test_morph_wraps_around_shape_list() {
+        let mut m = Milkdrop::new();
+        m.shape_index = SHAPE_PRESETS.len() - 1; // last shape
+        m.cycle_timer = 10.0;
+        m.update_shape_cycle();
+        assert_eq!(m.next_shape_index, 0, "should wrap to first shape");
     }
 }
