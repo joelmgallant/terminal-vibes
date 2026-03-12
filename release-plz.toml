@@ -5,3 +5,12 @@ git_release_enable = true
 release_always = true
 git_tag_name = "v{{ version }}"
 git_release_name = "v{{ version }}"
+
+# Internal crate — not published to crates.io
+[[package]]
+name = "terminal-vibes-core"
+publish = false
+release = false
+changelog_update = false
+git_tag_enable = false
+git_release_enable = false

@@ -4,6 +4,7 @@ version = "1.6.6"
 edition = "2021"
 description = "Core audio processing library for terminal-vibes"
 license = "MIT"
+publish = false
 
 [dependencies]
 rustfft = "6"
