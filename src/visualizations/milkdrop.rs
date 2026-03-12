@@ -560,6 +560,7 @@ impl Visualization for Milkdrop {
             ("c/C", "warp intensity"),
             ("v/V", "reactivity"),
             ("p/P", "palette"),
+            ("n/N", "next/prev shape"),
         ]
     }
 
@@ -641,6 +642,35 @@ impl Visualization for Milkdrop {
                     .unwrap_or(0);
                 self.palette = ColorPalette::ALL
                     [(idx + ColorPalette::ALL.len() - 1) % ColorPalette::ALL.len()];
+                true
+            }
+            // Manual shape cycling
+            KeyCode::Char('n') => {
+                if !self.morphing {
+                    self.next_shape_index = (self.shape_index + 1) % SHAPE_PRESETS.len();
+                    self.morph_t = 0.0;
+                    self.morphing = true;
+                    self.cycle_timer = 0.0;
+                    if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                        self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                    }
+                }
+                true
+            }
+            KeyCode::Char('N') => {
+                if !self.morphing {
+                    self.next_shape_index = if self.shape_index == 0 {
+                        SHAPE_PRESETS.len() - 1
+                    } else {
+                        self.shape_index - 1
+                    };
+                    self.morph_t = 0.0;
+                    self.morphing = true;
+                    self.cycle_timer = 0.0;
+                    if SHAPE_PRESETS[self.next_shape_index].name == "polygon" {
+                        self.polygon_sides = 3 + ((self.time * 1000.0) as u8 % 4);
+                    }
+                }
                 true
             }
             _ => false,
