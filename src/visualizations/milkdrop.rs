@@ -12,10 +12,8 @@ const WARP_GRID_H: usize = 12;
 
 /// Polar radius function: takes normalized parameter t (0..1 around the circle)
 /// and animation time, returns a radius multiplier.
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 type PolarFn = fn(t: f32, time: f32) -> f32;
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 struct ShapePreset {
     name: &'static str,
     radius_fn: PolarFn,
@@ -24,7 +22,6 @@ struct ShapePreset {
     hue_offset: f32,
 }
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 const SHAPE_PRESETS: [ShapePreset; 5] = [
     ShapePreset {
         name: "circle",
@@ -63,13 +60,11 @@ const SHAPE_PRESETS: [ShapePreset; 5] = [
     },
 ];
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 fn shape_circle(_t: f32, _time: f32) -> f32 {
     1.0
 }
 
 /// Polygon with configurable sides. Standalone version used by tests.
-#[allow(dead_code)] // Used by tests and shape cycling
 fn shape_polygon(t: f32, _time: f32, sides: u8) -> f32 {
     let n = sides as f32;
     let angle = t * 2.0 * PI;
@@ -79,24 +74,20 @@ fn shape_polygon(t: f32, _time: f32, sides: u8) -> f32 {
 }
 
 /// Default polygon (hexagon) for use in the SHAPE_PRESETS const array.
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 fn shape_polygon_default(t: f32, time: f32) -> f32 {
     shape_polygon(t, time, 6)
 }
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 fn shape_star(t: f32, _time: f32) -> f32 {
     let angle = t * 2.0 * PI;
     0.5 + 0.5 * (5.0 * angle).sin().abs()
 }
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 fn shape_rose(t: f32, _time: f32) -> f32 {
     let angle = t * 2.0 * PI;
     (3.0 * angle).cos().abs()
 }
 
-#[allow(dead_code)] // Used once paint_shapes wires in shape cycling
 fn shape_spiral(t: f32, _time: f32) -> f32 {
     // t goes 0..1, spiral wraps 3 revolutions so dots spread outward
     0.3 + 0.7 * t
@@ -366,35 +357,69 @@ impl Milkdrop {
             return;
         }
 
+        use crate::visualizations::render::{lerp, smoothstep};
+
         let cx = pw as f32 / 2.0;
         let cy = ph as f32 / 2.0;
         let base_radius = (pw.min(ph) as f32) * 0.15;
         let r = self.reactivity;
-        let radius = base_radius * (1.0 + self.bass * 2.0 * r + self.beat_envelope * 0.5 * r);
+        let audio_scale = 1.0 + self.bass * 2.0 * r + self.beat_envelope * 0.5 * r;
+
+        let preset_a = &SHAPE_PRESETS[self.shape_index];
+        let preset_b = &SHAPE_PRESETS[self.next_shape_index];
+        let blend = if self.morphing {
+            smoothstep(self.morph_t)
+        } else {
+            0.0
+        };
+
+        let eff_radius_scale = lerp(
+            preset_a.base_radius_scale,
+            preset_b.base_radius_scale,
+            blend,
+        );
+        let eff_brightness_base = lerp(preset_a.brightness, preset_b.brightness, blend);
+        let eff_hue_offset = lerp(preset_a.hue_offset, preset_b.hue_offset, blend);
 
         let num_dots = self.spectrum.len().min(64);
         for i in 0..num_dots {
             let t = i as f32 / num_dots as f32;
             let angle = t * 2.0 * PI + self.time * 0.5;
+
+            // Evaluate both shapes' polar functions
+            let r_a = self.eval_shape(self.shape_index, t);
+            let r_b = self.eval_shape(self.next_shape_index, t);
+            let shape_r = lerp(r_a, r_b, blend);
+
             let mag = self.spectrum.get(i).copied().unwrap_or(0.0);
-            let dot_r = radius * (0.5 + mag * 0.5);
+            let dot_r = base_radius * eff_radius_scale * audio_scale * shape_r * (0.5 + mag * 0.5);
             let x = (cx + dot_r * SIN_LUT.get(angle + PI / 2.0)).round() as usize;
             let y = (cy + dot_r * SIN_LUT.get(angle)).round() as usize;
 
-            let color = self.palette.color(t);
+            let color = self.palette.color((t + eff_hue_offset).fract());
             let (cr, cg, cb) = match color {
                 ratatui::style::Color::Rgb(r, g, b) => {
                     (r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
                 }
                 _ => (1.0, 1.0, 1.0),
             };
-            let brightness = 0.3 + mag * 0.7;
+            let brightness = eff_brightness_base * (0.4 + mag * 0.6);
             self.feedback.paint(
                 x,
                 y,
                 (cr * brightness, cg * brightness, cb * brightness),
                 BlendMode::Additive,
             );
+        }
+    }
+
+    /// Evaluate a shape's polar function, handling polygon's variable side count.
+    fn eval_shape(&self, index: usize, t: f32) -> f32 {
+        let preset = &SHAPE_PRESETS[index];
+        if preset.name == "polygon" {
+            shape_polygon(t, self.time, self.polygon_sides)
+        } else {
+            (preset.radius_fn)(t, self.time)
         }
     }
 
@@ -834,5 +859,50 @@ mod tests {
         m.cycle_timer = 10.0;
         m.update_shape_cycle();
         assert_eq!(m.next_shape_index, 0, "should wrap to first shape");
+    }
+
+    #[test]
+    fn test_paint_shapes_mid_morph_no_panic() {
+        let mut m = Milkdrop::new();
+        m.morphing = true;
+        m.shape_index = 0;
+        m.next_shape_index = 2; // circle -> star
+        m.morph_t = 0.5;
+        m.spectrum = vec![0.5; 128];
+
+        let frame = FrameData {
+            spectrum: vec![0.5; 128],
+            waveform: vec![0.3; 1024],
+            peak: 0.7,
+            rms: 0.5,
+            ..Default::default()
+        };
+        m.update(&frame);
+
+        let area = Rect::new(0, 0, 40, 20);
+        let mut buf = Buffer::empty(area);
+        m.render(area, &mut buf);
+        // Should not panic — rendering with interpolated shapes works
+    }
+
+    #[test]
+    fn test_shapes_survive_full_cycle() {
+        let mut m = Milkdrop::new();
+        let frame = FrameData {
+            spectrum: vec![0.6; 128],
+            waveform: vec![0.3; 1024],
+            peak: 0.7,
+            rms: 0.5,
+            ..Default::default()
+        };
+        let area = Rect::new(0, 0, 40, 20);
+
+        // Run enough frames to cycle through all shapes
+        for _ in 0..5000 {
+            m.update(&frame);
+            let mut buf = Buffer::empty(area);
+            m.render(area, &mut buf);
+        }
+        // Should survive without panic through multiple full cycles
     }
 }
