@@ -5,5 +5,6 @@ pub use terminal_vibes_core::beat;
 pub use terminal_vibes_core::config;
 pub use terminal_vibes_core::processing;
 
+pub mod pipeline;
 pub mod ui;
 pub mod visualizations;
