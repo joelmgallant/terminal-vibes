@@ -35,7 +35,13 @@ pub struct GpuApp {
 
 impl GpuApp {
     pub fn new(config: Config) -> Self {
-        let shader_loader = ShaderLoader::new(&[]);
+        let extra_dirs: Vec<std::path::PathBuf> = config
+            .gui
+            .extra_shader_dirs
+            .iter()
+            .map(std::path::PathBuf::from)
+            .collect();
+        let shader_loader = ShaderLoader::new(&extra_dirs);
         let now = Instant::now();
         Self {
             config,
@@ -142,12 +148,17 @@ impl ApplicationHandler for GpuApp {
             return;
         }
 
-        let width = 1280u32;
-        let height = 720u32;
+        let width = self.config.gui.width;
+        let height = self.config.gui.height;
 
-        let attrs = WindowAttributes::default()
+        let mut attrs = WindowAttributes::default()
             .with_title("terminal-vibes")
             .with_inner_size(winit::dpi::LogicalSize::new(width, height));
+
+        if self.config.gui.fullscreen {
+            attrs = attrs.with_fullscreen(Some(Fullscreen::Borderless(None)));
+            self.fullscreen = true;
+        }
 
         let window = Arc::new(
             event_loop
@@ -157,6 +168,14 @@ impl ApplicationHandler for GpuApp {
 
         let mut renderer = pollster::block_on(GpuRenderer::new(window.clone()))
             .expect("Failed to create GPU renderer");
+
+        // Apply vsync preference
+        if !self.config.gui.vsync {
+            renderer.surface_config.present_mode = wgpu::PresentMode::AutoNoVsync;
+            renderer
+                .surface
+                .configure(&renderer.device, &renderer.surface_config);
+        }
 
         // Initialize shader pipeline from shader loader's current shader
         let shader_src = self.shader_loader.current_source().to_string();
@@ -251,6 +270,19 @@ impl ApplicationHandler for GpuApp {
                 }
 
                 self.frame_count += 1;
+
+                // Update window title status every 30 frames
+                if self.frame_count % 30 == 0 {
+                    if let Some(window) = &self.window {
+                        let fps = 1.0 / delta.max(0.001);
+                        let bpm = self.latest_frame.as_ref().map_or(0.0, |f| f.tempo.bpm);
+                        let viz_name = self.shader_loader.current_name();
+                        window.set_title(&format!(
+                            "terminal-vibes \u{2014} {} | {:.0} BPM | {:.0} FPS",
+                            viz_name, bpm, fps
+                        ));
+                    }
+                }
             }
             _ => {}
         }

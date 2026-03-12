@@ -9,6 +9,7 @@ pub struct Config {
     pub display: DisplayConfig,
     pub keybindings: KeybindingsConfig,
     pub beat_detection: BeatDetectionConfig,
+    pub gui: GuiConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +37,28 @@ pub struct KeybindingsConfig {
     pub toggle_status: String,
     pub increase_sensitivity: String,
     pub decrease_sensitivity: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct GuiConfig {
+    pub width: u32,
+    pub height: u32,
+    pub vsync: bool,
+    pub fullscreen: bool,
+    pub extra_shader_dirs: Vec<String>,
+}
+
+impl Default for GuiConfig {
+    fn default() -> Self {
+        Self {
+            width: 1280,
+            height: 720,
+            vsync: true,
+            fullscreen: false,
+            extra_shader_dirs: vec![],
+        }
+    }
 }
 
 impl Default for AudioConfig {
