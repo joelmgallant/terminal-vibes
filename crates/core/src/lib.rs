@@ -1,1 +1,4 @@
-// Modules will be added in Task 2
+pub mod audio;
+pub mod beat;
+pub mod config;
+pub mod processing;
