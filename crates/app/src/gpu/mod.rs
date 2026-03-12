@@ -1,4 +1,6 @@
+pub mod audio_texture;
 pub mod renderer;
+pub mod uniforms;
 pub mod window;
 
 use crate::config::Config;
