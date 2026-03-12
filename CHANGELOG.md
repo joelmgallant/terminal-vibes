@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.6](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.5...v1.6.6) - 2026-03-12
+
+### Other
+
+- Merge branch 'milkdrop-shape-cycling' into trunk
+- add milkdrop shape cycling implementation plan
+- add milkdrop shape cycling design
+
 ## [1.6.5](https://github.com/joelmgallant/terminal-vibes/compare/v1.6.4...v1.6.5) - 2026-03-10
 
 ### Other
