@@ -771,7 +771,6 @@ impl Visualization for Milkdrop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::consts::PI;
 
     #[test]
     fn test_shape_circle_constant() {
