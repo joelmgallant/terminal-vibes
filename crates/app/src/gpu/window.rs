@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::event::{ElementState, KeyEvent, Modifiers, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
@@ -13,6 +13,7 @@ use crate::processing::FrameData;
 
 use super::audio_texture::AudioTextureData;
 use super::renderer::GpuRenderer;
+use super::shader_loader::ShaderLoader;
 use super::uniforms::Uniforms;
 
 pub struct GpuApp {
@@ -21,17 +22,20 @@ pub struct GpuApp {
     frame_rx: Option<std::sync::mpsc::Receiver<FrameData>>,
     window: Option<Arc<Window>>,
     renderer: Option<GpuRenderer>,
+    shader_loader: ShaderLoader,
     start_time: Instant,
     last_frame_time: Instant,
     frame_count: u32,
     sensitivity: f32,
     beat_intensity: f32,
+    modifiers: Modifiers,
     fullscreen: bool,
     latest_frame: Option<FrameData>,
 }
 
 impl GpuApp {
     pub fn new(config: Config) -> Self {
+        let shader_loader = ShaderLoader::new(&[]);
         let now = Instant::now();
         Self {
             config,
@@ -39,11 +43,13 @@ impl GpuApp {
             frame_rx: None,
             window: None,
             renderer: None,
+            shader_loader,
             start_time: now,
             last_frame_time: now,
             frame_count: 0,
             sensitivity: 1.0,
             beat_intensity: 1.0,
+            modifiers: Modifiers::default(),
             fullscreen: false,
             latest_frame: None,
         }
@@ -87,10 +93,34 @@ impl GpuApp {
             },
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
             Key::Named(NamedKey::Tab) => {
-                // TODO: cycle viz (Task 11)
-                log::info!("Tab pressed — viz cycling coming in Task 11");
+                if self.modifiers.state().shift_key() {
+                    self.shader_loader.prev();
+                } else {
+                    self.shader_loader.next();
+                }
+                self.rebuild_pipeline();
             }
             _ => {}
+        }
+    }
+
+    fn rebuild_pipeline(&mut self) {
+        if let Some(renderer) = &mut self.renderer {
+            let source = self.shader_loader.current_source().to_string();
+            match renderer.init_pipeline(&source) {
+                Ok(()) => {
+                    log::info!("Shader loaded: {}", self.shader_loader.current_name());
+                    if let Some(window) = &self.window {
+                        window.set_title(&format!(
+                            "terminal-vibes \u{2014} {}",
+                            self.shader_loader.current_name()
+                        ));
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Shader compile error: {}. Keeping previous shader.", e);
+                }
+            }
         }
     }
 
@@ -128,11 +158,16 @@ impl ApplicationHandler for GpuApp {
         let mut renderer = pollster::block_on(GpuRenderer::new(window.clone()))
             .expect("Failed to create GPU renderer");
 
-        // Initialize shader pipeline with built-in spectrum_rings
-        let shader_src = include_str!("shaders/spectrum_rings.wgsl");
+        // Initialize shader pipeline from shader loader's current shader
+        let shader_src = self.shader_loader.current_source().to_string();
         renderer
-            .init_pipeline(shader_src)
+            .init_pipeline(&shader_src)
             .expect("Failed to init shader pipeline");
+
+        window.set_title(&format!(
+            "terminal-vibes \u{2014} {}",
+            self.shader_loader.current_name()
+        ));
 
         self.renderer = Some(renderer);
         self.window = Some(window);
@@ -160,10 +195,18 @@ impl ApplicationHandler for GpuApp {
                     renderer.resize(size.width, size.height);
                 }
             }
+            WindowEvent::ModifiersChanged(new_modifiers) => {
+                self.modifiers = new_modifiers;
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 self.handle_key(&event, event_loop);
             }
             WindowEvent::RedrawRequested => {
+                // Hot-reload: check for shader file changes
+                if self.shader_loader.poll_changes() {
+                    self.rebuild_pipeline();
+                }
+
                 self.drain_audio();
 
                 let now = Instant::now();

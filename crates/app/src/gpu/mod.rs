@@ -1,5 +1,6 @@
 pub mod audio_texture;
 pub mod renderer;
+pub mod shader_loader;
 pub mod uniforms;
 pub mod window;
 
