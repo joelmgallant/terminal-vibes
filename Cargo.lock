@@ -1042,15 +1042,29 @@ dependencies = [
  "anyhow",
  "approx",
  "clap",
- "core-foundation",
  "crossterm",
  "dirs",
  "env_logger",
+ "log",
+ "ratatui",
+ "ringbuf",
+ "serde",
+ "terminal-vibes-core",
+ "toml",
+]
+
+[[package]]
+name = "terminal-vibes-core"
+version = "1.6.5"
+dependencies = [
+ "anyhow",
+ "approx",
+ "core-foundation",
+ "dirs",
  "libpulse-binding",
  "libpulse-simple-binding",
  "log",
  "objc2",
- "ratatui",
  "ringbuf",
  "rustfft",
  "serde",

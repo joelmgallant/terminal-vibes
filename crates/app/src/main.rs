@@ -9,31 +9,27 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-mod audio;
-mod beat;
-mod config;
-mod processing;
-mod ui;
-mod visualizations;
+// Core types via lib.rs re-exports
+use terminal_vibes::audio::{AudioConfig, AudioTap};
+use terminal_vibes::beat::BeatDetector;
+use terminal_vibes::config::Config;
+use terminal_vibes::processing::{FrameData, Processor, ProcessorConfig};
 
-use audio::{AudioConfig, AudioTap};
-use beat::BeatDetector;
-use config::Config;
-use processing::{FrameData, Processor, ProcessorConfig};
-use ui::App;
-use visualizations::aurora::Aurora;
-use visualizations::life::Life;
-use visualizations::lissajous::Lissajous;
-use visualizations::milkdrop::Milkdrop;
-use visualizations::plasma::Plasma;
-use visualizations::radial::RadialSpectrum;
-use visualizations::rain::Rain;
-use visualizations::registry::VisualizationRegistry;
-use visualizations::spectrogram::Spectrogram;
-use visualizations::spectrum::SpectrumBars;
-use visualizations::starfield::Starfield;
-use visualizations::tunnel::Tunnel;
-use visualizations::waveform::Waveform;
+// App types
+use terminal_vibes::ui::App;
+use terminal_vibes::visualizations::aurora::Aurora;
+use terminal_vibes::visualizations::life::Life;
+use terminal_vibes::visualizations::lissajous::Lissajous;
+use terminal_vibes::visualizations::milkdrop::Milkdrop;
+use terminal_vibes::visualizations::plasma::Plasma;
+use terminal_vibes::visualizations::radial::RadialSpectrum;
+use terminal_vibes::visualizations::rain::Rain;
+use terminal_vibes::visualizations::registry::VisualizationRegistry;
+use terminal_vibes::visualizations::spectrogram::Spectrogram;
+use terminal_vibes::visualizations::spectrum::SpectrumBars;
+use terminal_vibes::visualizations::starfield::Starfield;
+use terminal_vibes::visualizations::tunnel::Tunnel;
+use terminal_vibes::visualizations::waveform::Waveform;
 
 #[derive(Parser)]
 #[command(name = "terminal-vibes", about = "Terminal-based music visualizer")]
