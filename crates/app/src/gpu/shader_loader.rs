@@ -59,7 +59,7 @@ impl ShaderLoader {
                 if let Ok(entries) = std::fs::read_dir(dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.extension().map_or(false, |e| e == "wgsl") {
+                        if path.extension().is_some_and(|e| e == "wgsl") {
                             if let Ok(source) = std::fs::read_to_string(&path) {
                                 let name = path
                                     .file_stem()
@@ -84,7 +84,7 @@ impl ShaderLoader {
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
                     for path in &event.paths {
-                        if path.extension().map_or(false, |e| e == "wgsl") {
+                        if path.extension().is_some_and(|e| e == "wgsl") {
                             let shader_event = match event.kind {
                                 EventKind::Create(_) => Some(ShaderEvent::Created(path.clone())),
                                 EventKind::Modify(_) => Some(ShaderEvent::Modified(path.clone())),

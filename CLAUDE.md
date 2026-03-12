@@ -22,6 +22,10 @@ cargo test --test spectrum_test  # Run a specific integration test file
 
 cargo clippy                 # Lint
 cargo fmt                    # Format
+
+cargo build --features gui        # Build with GPU window mode
+cargo run --features gui -- --gui # Run GPU window mode
+cargo test --features gui         # Run tests including GUI tests
 ```
 
 **Note:** `tests/processing_test.rs` has a pre-existing compile error (`sample_rate` field removed from `ProcessorConfig`). Use `cargo test --lib` or target specific test files to avoid it.
