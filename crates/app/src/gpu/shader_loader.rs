@@ -72,6 +72,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/fluid.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "aurora".to_string(),
+                source: include_str!("shaders/aurora.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
