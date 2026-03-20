@@ -57,6 +57,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/kaleidoscope.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "neon_landscape".to_string(),
+                source: include_str!("shaders/neon_landscape.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
