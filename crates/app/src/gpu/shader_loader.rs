@@ -67,6 +67,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/galaxy.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "fluid".to_string(),
+                source: include_str!("shaders/fluid.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
