@@ -47,6 +47,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/tunnel.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "fractal".to_string(),
+                source: include_str!("shaders/fractal.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
