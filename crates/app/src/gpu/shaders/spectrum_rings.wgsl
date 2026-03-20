@@ -26,7 +26,7 @@ struct Uniforms {
 // --- Visualization ---
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let uv = frag_coord.xy / u.resolution;
+    let uv = vec2<f32>(frag_coord.x, u.resolution.y - frag_coord.y) / u.resolution;
     let center = uv - vec2<f32>(0.5, 0.5);
     let aspect = u.resolution.x / u.resolution.y;
     let corrected = vec2<f32>(center.x * aspect, center.y);

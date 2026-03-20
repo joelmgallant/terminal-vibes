@@ -44,7 +44,7 @@ fn rotate2d(angle: f32) -> mat2x2<f32> {
 
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let uv = (frag_coord.xy - u.resolution * 0.5) / u.resolution.y;
+    let uv = (vec2<f32>(frag_coord.x, u.resolution.y - frag_coord.y) - u.resolution * 0.5) / u.resolution.y;
     let screen_uv = frag_coord.xy / u.resolution;
 
     let rot_speed = u.time * (0.2 + u.mid_energy * 0.3);

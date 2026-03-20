@@ -42,7 +42,7 @@ fn fbm(p: vec2<f32>) -> f32 {
 
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let uv = frag_coord.xy / u.resolution;
+    let uv = vec2<f32>(frag_coord.x, u.resolution.y - frag_coord.y) / u.resolution;
     let aspect = u.resolution.x / u.resolution.y;
     let p = vec2<f32>(uv.x * aspect, uv.y);
 

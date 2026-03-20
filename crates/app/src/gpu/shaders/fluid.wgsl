@@ -30,7 +30,7 @@ fn noise2d(p: vec2<f32>) -> f32 {
 
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
-    let uv = frag_coord.xy / u.resolution;
+    let uv = vec2<f32>(frag_coord.x, u.resolution.y - frag_coord.y) / u.resolution;
     let centered = uv - 0.5;
 
     // Velocity field from spectrum-driven noise
@@ -48,7 +48,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var color = prev * u.feedback_mix;
 
     // Slight upward drift (heat rises)
-    let drift_uv = uv + vec2<f32>(0.0, -0.002);
+    let drift_uv = uv + vec2<f32>(0.0, 0.002);
     let drifted = textureSample(prev_frame, prev_sampler, drift_uv).rgb;
     color = max(color, drifted * (u.feedback_mix - 0.01));
 
