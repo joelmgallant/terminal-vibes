@@ -48,4 +48,5 @@ fn test_uniforms_from_frame() {
     assert_eq!(uniforms.bpm, 120.0);
     assert_eq!(uniforms.bass_beat, 1.0); // true -> 1.0
     assert_eq!(uniforms.mid_beat, 0.0); // false -> 0.0
+    assert_eq!(uniforms.feedback_mix, 0.95);
 }

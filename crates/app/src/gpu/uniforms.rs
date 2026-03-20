@@ -18,7 +18,7 @@ pub struct Uniforms {
     pub bpm: f32,
     pub beat_phase: f32,
     pub beat_confidence: f32,
-    pub _pad: f32,
+    pub feedback_mix: f32,
 }
 
 impl Uniforms {
@@ -44,7 +44,7 @@ impl Uniforms {
             bpm: frame.tempo.bpm,
             beat_phase: frame.tempo.phase,
             beat_confidence: frame.tempo.confidence,
-            _pad: 0.0,
+            feedback_mix: 0.95,
         }
     }
 }
