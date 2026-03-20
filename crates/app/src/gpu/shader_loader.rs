@@ -42,6 +42,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/plasma.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "tunnel".to_string(),
+                source: include_str!("shaders/tunnel.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
