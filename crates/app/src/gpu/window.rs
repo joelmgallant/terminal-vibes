@@ -213,6 +213,7 @@ impl ApplicationHandler for GpuApp {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height);
                 }
+                self.rebuild_pipeline();
             }
             WindowEvent::ModifiersChanged(new_modifiers) => {
                 self.modifiers = new_modifiers;
@@ -233,6 +234,7 @@ impl ApplicationHandler for GpuApp {
                 let delta = now.duration_since(self.last_frame_time).as_secs_f32();
                 self.last_frame_time = now;
 
+                let mut did_render = false;
                 if let (Some(renderer), Some(frame)) = (&self.renderer, &self.latest_frame) {
                     let mut scaled_frame = frame.clone();
                     // Apply sensitivity
@@ -263,10 +265,19 @@ impl ApplicationHandler for GpuApp {
 
                     if let Err(e) = renderer.render_shader() {
                         log::error!("Render error: {}", e);
+                    } else {
+                        did_render = true;
                     }
                 } else if let Some(renderer) = &self.renderer {
                     // No audio data yet — clear to black
                     let _ = renderer.render_clear(0.0, 0.0, 0.0);
+                }
+
+                // Advance feedback ping-pong after successful render
+                if did_render {
+                    if let Some(renderer) = &mut self.renderer {
+                        renderer.flip_feedback();
+                    }
                 }
 
                 self.frame_count += 1;
