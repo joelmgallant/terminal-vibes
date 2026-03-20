@@ -77,6 +77,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/aurora.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "geometric".to_string(),
+                source: include_str!("shaders/geometric.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
