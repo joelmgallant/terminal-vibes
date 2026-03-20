@@ -52,6 +52,11 @@ impl ShaderLoader {
                 source: include_str!("shaders/fractal.wgsl").to_string(),
                 path: None,
             },
+            ShaderEntry {
+                name: "kaleidoscope".to_string(),
+                source: include_str!("shaders/kaleidoscope.wgsl").to_string(),
+                path: None,
+            },
         ];
 
         // Watch shader directories
