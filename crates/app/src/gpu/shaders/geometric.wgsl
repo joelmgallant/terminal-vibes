@@ -99,7 +99,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
 
     // Feedback: subtle trail
     let prev = textureSample(prev_frame, prev_sampler, screen_uv).rgb;
-    color = max(color, prev * 0.88);
+    color = max(color, prev * u.feedback_mix);
 
     return vec4<f32>(color, 1.0);
 }

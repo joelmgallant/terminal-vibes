@@ -58,11 +58,10 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     var color = brightness * mix(vec3<f32>(1.0), clamp(p - 1.0, vec3<f32>(0.0), vec3<f32>(1.0)), 0.8);
 
     // Feedback: mandala trail
-    let prev = textureSample(prev_frame, prev_sampler, screen_uv).rgb;
     // Slight zoom on feedback for spiral effect
     let zoom_uv = (screen_uv - 0.5) * 0.99 + 0.5;
     let prev_zoomed = textureSample(prev_frame, prev_sampler, zoom_uv).rgb;
-    color = max(color, prev_zoomed * 0.92);
+    color = max(color, prev_zoomed * u.feedback_mix);
 
     // Vignette
     let vig = 1.0 - smoothstep(0.4, 0.9, r);

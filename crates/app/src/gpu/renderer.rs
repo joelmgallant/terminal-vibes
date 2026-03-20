@@ -100,6 +100,8 @@ impl GpuRenderer {
         })
     }
 
+    /// Resize the surface. Caller must call `init_pipeline()` afterwards to
+    /// recreate feedback textures at the new size.
     pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
             self.surface_config.width = width;

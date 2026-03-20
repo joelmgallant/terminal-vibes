@@ -45,12 +45,12 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     let prev = textureSample(prev_frame, prev_sampler, distorted_uv).rgb;
 
     // Dissipation: slight darkening each frame
-    var color = prev * 0.97;
+    var color = prev * u.feedback_mix;
 
     // Slight upward drift (heat rises)
     let drift_uv = uv + vec2<f32>(0.0, -0.002);
     let drifted = textureSample(prev_frame, prev_sampler, drift_uv).rgb;
-    color = max(color, drifted * 0.96);
+    color = max(color, drifted * (u.feedback_mix - 0.01));
 
     // Color injection based on audio
     let dist_center = length(centered);

@@ -39,7 +39,8 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     }
 
     // Smooth iteration count
-    let smooth_iter = f32(iter) - log2(log2(dot(z, z))) + 4.0;
+    let safe_zz = max(dot(z, z), 1.0);
+    let smooth_iter = f32(iter) - log2(log2(safe_zz)) + 4.0;
     let t = smooth_iter / f32(max_iter);
 
     // Color from iteration count

@@ -80,7 +80,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     let sn = sin(rot_amount);
     let rot_uv = (screen_uv - 0.5) * mat2x2<f32>(cs, -sn, sn, cs) + 0.5;
     let prev = textureSample(prev_frame, prev_sampler, rot_uv).rgb;
-    color = max(color, prev * 0.93);
+    color = max(color, prev * u.feedback_mix);
 
     return vec4<f32>(color, 1.0);
 }
