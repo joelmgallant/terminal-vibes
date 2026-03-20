@@ -15,17 +15,21 @@
 //   u.bass_beat, u.mid_beat, u.treble_beat: 1.0 on beat, 0.0 otherwise
 //   u.bpm: estimated beats per minute
 //   u.beat_phase: 0..1 phase within beat cycle
+//   prev_frame (texture): previous frame output (for feedback effects)
+//   u.feedback_mix: suggested feedback blend factor (0..1, default 0.95)
 
 struct Uniforms {
     time: f32, delta_time: f32, resolution: vec2<f32>, frame: u32,
     beat_envelope: f32, bass_energy: f32, mid_energy: f32, treble_energy: f32,
     bass_beat: f32, mid_beat: f32, treble_beat: f32,
-    bpm: f32, beat_phase: f32, beat_confidence: f32, _pad: f32,
+    bpm: f32, beat_phase: f32, beat_confidence: f32, feedback_mix: f32,
 };
 
 @group(0) @binding(0) var audio_data: texture_2d<f32>;
 @group(0) @binding(1) var audio_sampler: sampler;
 @group(0) @binding(2) var<uniform> u: Uniforms;
+@group(0) @binding(3) var prev_frame: texture_2d<f32>;
+@group(0) @binding(4) var prev_sampler: sampler;
 
 @fragment
 fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {

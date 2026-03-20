@@ -14,12 +14,14 @@ struct Uniforms {
     bpm: f32,
     beat_phase: f32,
     beat_confidence: f32,
-    _pad: f32,
+    feedback_mix: f32,
 };
 
 @group(0) @binding(0) var audio_data: texture_2d<f32>;
 @group(0) @binding(1) var audio_sampler: sampler;
 @group(0) @binding(2) var<uniform> u: Uniforms;
+@group(0) @binding(3) var prev_frame: texture_2d<f32>;
+@group(0) @binding(4) var prev_sampler: sampler;
 
 // --- Visualization ---
 @fragment
